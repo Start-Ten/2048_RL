@@ -22,12 +22,12 @@ echo   Log: %LOG_FILE%
 echo.
 
 echo [0/5] Detecting GPU...
-:: Check for NVIDIA GPU
+:: Check for NVIDIA GPU (compatible with old and new nvidia-smi)
 nvidia-smi -L >nul 2>&1
 if %errorlevel% equ 0 (
     echo   NVIDIA GPU detected
-    for /f "tokens=*" %%g in ('nvidia-smi --query-gpu^=name --format^=csv,noheader 2^>nul') do echo   GPU: %%g
-    for /f "tokens=*" %%m in ('nvidia-smi --query-gpu^=memory.total --format^=csv,noheader 2^>nul') do echo   VRAM: %%m
+    for /f "usebackq skip=1 tokens=*" %%g in (`nvidia-smi --query-gpu^=name --format^=csv 2^>nul`) do echo   GPU: %%g
+    for /f "usebackq skip=1 tokens=*" %%m in (`nvidia-smi --query-gpu^=memory.total --format^=csv 2^>nul`) do echo   VRAM: %%m
 ) else (
     echo   No NVIDIA GPU found - CPU training only
 )
