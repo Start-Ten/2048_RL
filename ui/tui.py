@@ -483,12 +483,11 @@ class TrainingMonitor:
         return layout
 
 
-def create_monitor(cpp_available=True, compile_enabled=False,
-                   n_envs=1, model_params=0, config=None):
+def create_monitor(cpp=True, compiled=False, n_envs=1, params=0, cfg=None):
     try:
         return TrainingMonitor(
-            cpp_available=cpp_available, compile_enabled=compile_enabled,
-            n_envs=n_envs, model_params=model_params, config=config)
+            cpp_available=cpp, compile_enabled=compiled,
+            n_envs=n_envs, model_params=params, config=cfg)
     except Exception as e:
         print(f"[TUI] init failed: {e}, using tqdm")
         return None

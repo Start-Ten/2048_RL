@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from game2048 import Game2048
+from src.engine import Game2048
 
 # 检测可用设备
 if torch.cuda.is_available():
