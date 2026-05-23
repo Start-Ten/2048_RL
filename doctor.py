@@ -86,10 +86,31 @@ class Doctor:
                 if hasattr(torch.backends.cuda.matmul, 'allow_tf32'):
                     self._check("TF32 support", True, "", critical=False)
             else:
-                self._check("CUDA available", False, "GPU training unavailable")
-                if self.auto_fix:
-                    print(f"  {Y}No GPU detected. Install PyTorch with CUDA:{D}")
-                    print(f"    pip install torch --index-url https://download.pytorch.org/whl/cu124")
+                # Check if NVIDIA GPU exists but PyTorch is CPU-only
+                has_nvidia_gpu = False
+                try:
+                    nvsmi = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True)
+                    has_nvidia_gpu = nvsmi.returncode == 0 and "GPU" in nvsmi.stdout
+                except Exception:
+                    pass
+
+                if has_nvidia_gpu:
+                    self._check("CUDA available", False, "NVIDIA GPU detected but PyTorch is CPU-only")
+                    if self.auto_fix:
+                        print(f"  {C}Auto-installing PyTorch with CUDA...{D}")
+                        try:
+                            subprocess.check_call(
+                                [sys.executable, "-m", "pip", "install", "torch",
+                                 "--index-url", "https://download.pytorch.org/whl/cu124",
+                                 "--force-reinstall", "--no-deps"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                            )
+                            self.fixes_applied.append("installed PyTorch CUDA version")
+                            print(f"  {G}PyTorch CUDA installed. Please restart the script.{D}")
+                        except Exception as e:
+                            print(f"  {R}Auto-install failed: {e}{D}")
+                else:
+                    self._check("CUDA available", False, "No NVIDIA GPU or driver found")
 
         except ImportError:
             self._check("PyTorch installed", False, "pip install torch")

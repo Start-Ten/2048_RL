@@ -27,6 +27,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import warnings
 from collections import deque
+from contextlib import nullcontext
 
 # ---- TUI 监控 (可选) ----
 try:
@@ -671,8 +672,9 @@ class DQNAgent:
             except Exception as e:
                 print(f"torch.compile failed: {e}, continuing without compile")
 
-        # 混合精度
-        self.scaler = torch.amp.GradScaler(device_str)
+        # 混合精度 (仅CUDA/XPU，CPU不支持)
+        self.use_amp = device.type in ("cuda", "xpu")
+        self.scaler = torch.amp.GradScaler(device_str) if self.use_amp else None
 
         self.steps_done = 0
         self.grad_step = 0
@@ -712,7 +714,9 @@ class DQNAgent:
         self.policy_net.reset_noise()
         self.target_net.reset_noise()
 
-        with torch.amp.autocast(device_str):
+        # 前向：仅在GPU上使用autocast
+        amp_ctx = torch.amp.autocast(device_str) if self.use_amp else nullcontext()
+        with amp_ctx:
             current_q = self.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze()
 
             with torch.no_grad():
@@ -726,14 +730,22 @@ class DQNAgent:
             loss = (losses * weights).mean()
             loss = loss / self.grad_accum_steps
 
-        self.scaler.scale(loss).backward()
+        # 反向：仅在GPU上使用scaler
+        if self.use_amp:
+            self.scaler.scale(loss).backward()
+        else:
+            loss.backward()
 
         self.grad_step += 1
         if self.grad_step % self.grad_accum_steps == 0:
-            self.scaler.unscale_(self.optimizer)
+            if self.use_amp:
+                self.scaler.unscale_(self.optimizer)
             torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 10.0)
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
+            if self.use_amp:
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                self.optimizer.step()
             self.optimizer.zero_grad(set_to_none=True)
             self._ema_update_target()
 
@@ -757,7 +769,7 @@ class DQNAgent:
             'optimizer_state_dict': self.optimizer.state_dict(),
             'steps_done': self.steps_done,
             'grad_step': self.grad_step,
-            'scaler_state_dict': self.scaler.state_dict(),
+            'scaler_state_dict': self.scaler.state_dict() if self.scaler else {},
         }, path)
 
     def load_model(self, path):

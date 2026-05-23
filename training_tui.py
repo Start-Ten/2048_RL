@@ -1,5 +1,5 @@
 """
-training_tui.py — Claude Code 风格 TUI 训练监控面板
+training_tui.py -- Claude Code 风格 TUI 训练监控面板
 """
 import time, math, os, sys, platform
 from collections import deque
@@ -55,9 +55,9 @@ C_DIM     = "dim"
 C_MUTED   = "bright_black"
 
 # ── Status dots ────────────────────────────────────────────
-DOT_OK   = "[green]●[/]"
-DOT_WARN = "[yellow]●[/]"
-DOT_OFF  = "[bright_black]○[/]"
+DOT_OK   = "[green]*[/]"
+DOT_WARN = "[yellow]*[/]"
+DOT_OFF  = "[bright_black]-[/]"
 
 # ── Block chars ────────────────────────────────────────────
 BLOCKS = " ·▪▎▌▊█"
@@ -244,7 +244,7 @@ class TrainingMonitor:
         left.append(" 2048 DQN V4 ", style=f"bold {C_HEADER}")
         left.append(f" Ep {self.ep:,}/{self.total:,} ", style=C_VALUE)
         left.append(f"({pct}) ", style=C_DIM)
-        left.append(f"⏱ {h}h{m:02d}m ", style=C_MUTED)
+        left.append(f"T+{h}h{m:02d}m ", style=C_MUTED)
         if eta: left.append(eta, style=C_MUTED)
 
         right = Text()
@@ -280,7 +280,7 @@ class TrainingMonitor:
         t.add_row("Max Tile", Text(tile_text, style=tile_style), tile_best)
 
         # Loss
-        loss_text = f"{self.loss:.4f}" if self.loss > 0 else "—"
+        loss_text = f"{self.loss:.4f}" if self.loss > 0 else "--"
         t.add_row("Loss", loss_text, "")
 
         # LR
@@ -299,9 +299,9 @@ class TrainingMonitor:
         t.add_row("Compile", f"{DOT_OK} ON" if self.compiled else f"{DOT_OFF} off")
         t.add_row("Env", f"x{self.n_envs}" if self.n_envs > 1 else "single")
         t.add_row("Params", f"{self.params_m:.0f}M")
-        bs = self.cfg.get("batch_size", "—")
+        bs = self.cfg.get("batch_size", "--")
         ga = self.cfg.get("grad_accum", 1)
-        t.add_row("Batch", f"{bs}×{ga}")
+        t.add_row("Batch", f"{bs}x{ga}")
 
         return Panel(t, title="System", border_style="bright_black", padding=(1, 2),
                      title_align="left")
@@ -350,7 +350,7 @@ class TrainingMonitor:
             bar4 = _gradient_bar(s["temp_c"], 90, 18)
             rows.append(Text.assemble(
                 self._label(" Temp "), bar4,
-                f" [{tc}]{s['temp_c']}°C[/]"
+                f" [{tc}]{s['temp_c']}C[/]"
             ))
 
         return Panel(
@@ -370,7 +370,7 @@ class TrainingMonitor:
         lines.append(Text.assemble(
             (f" Score  ", C_LABEL),
             (f"{sl} ", C_GOOD),
-            (f" {lo:,.0f} … {hi:,.0f}", C_DIM)
+            (f" {lo:,.0f} ... {hi:,.0f}", C_DIM)
         ))
 
         # Loss sparkline
@@ -381,7 +381,7 @@ class TrainingMonitor:
             lines.append(Text.assemble(
                 (f" Loss   ", C_LABEL),
                 (f"{sl2} ", C_WARN),
-                (f" {lo2:.4f} … {hi2:.4f}", C_DIM)
+                (f" {lo2:.4f} ... {hi2:.4f}", C_DIM)
             ))
 
         # GPU util sparkline
@@ -392,7 +392,7 @@ class TrainingMonitor:
             lines.append(Text.assemble(
                 (f" GPU %  ", C_LABEL),
                 (f"{sl3} ", "magenta"),
-                (f" {lo3:.0f} … {hi3:.0f}%", C_DIM)
+                (f" {lo3:.0f} ... {hi3:.0f}%", C_DIM)
             ))
 
         return Panel(
@@ -416,7 +416,7 @@ class TrainingMonitor:
                 issues.append(f"{DOT_WARN} VRAM near limit ({gpu['mem_pct']:.0f}%)")
                 suggestions.append("  -> reduce batch_size or n_envs")
             if gpu.get("temp_c", 0) > 85:
-                issues.append(f"{DOT_WARN} GPU hot ({gpu['temp_c']}°C)")
+                issues.append(f"{DOT_WARN} GPU hot ({gpu['temp_c']}C)")
                 suggestions.append("  -> check cooling / reduce power limit")
 
         if not self.compiled:
