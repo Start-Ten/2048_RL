@@ -26,6 +26,11 @@ if _USE_COMPILE:
         _USE_COMPILE = False
 
 
+# Enable performance optimizations
+if DEVICE.type == "cuda":
+    torch.backends.cudnn.benchmark = True
+    torch.set_float32_matmul_precision('high')
+
 class DQNAgent:
     def __init__(self, input_channels=8, action_size=4, lr=3e-4, gamma=0.995,
                  tau=0.005, batch_size=1024, grad_accum=2, n_envs=128):
