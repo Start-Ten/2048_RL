@@ -54,13 +54,6 @@ C_BAD     = "red"
 C_DIM     = "dim"
 C_MUTED   = "bright_black"
 
-# ── Status dots ────────────────────────────────────────────
-DOT_OK   = "[green]OK[/]"
-DOT_WARN = "[yellow]!![/]"
-DOT_OFF  = "[bright_black]--[/]"
-
-# ── Block chars ────────────────────────────────────────────
-BLOCKS = " ·▪▎▌▊█"
 
 
 def _plain_bar(value, max_val, width=20):
@@ -203,7 +196,7 @@ class TrainingMonitor:
         return [self._label(f" {label} "), self._val(value, style)]
 
     def _status_dot(self, condition):
-        return DOT_OK if condition else DOT_OFF
+        return f"[green]OK[/]" if condition else f"[bright_black]--[/]"
 
     # ── Header bar ──────────────────────────────────────────
     def _header(self):
@@ -275,8 +268,8 @@ class TrainingMonitor:
         t.add_column(style=C_LABEL, width=11, justify="right")
         t.add_column(style=C_VALUE)
 
-        t.add_row("Engine", f"{DOT_OK} C++" if self.cpp else f"{DOT_OFF} Python")
-        t.add_row("Compile", f"{DOT_OK} ON" if self.compiled else f"{DOT_OFF} off")
+        t.add_row("Engine", f"[green]OK[/] C++" if self.cpp else f"[bright_black]--[/] Python")
+        t.add_row("Compile", f"[green]OK[/] ON" if self.compiled else f"[bright_black]--[/] off")
         t.add_row("Env", f"x{self.n_envs}" if self.n_envs > 1 else "single")
         t.add_row("Params", f"{self.params_m:.0f}M")
         bs = self.cfg.get("batch_size", "--")
@@ -332,58 +325,61 @@ class TrainingMonitor:
         t = Table.grid(padding=(0, 1))
         t.add_column(style=C_LABEL, width=7)
         t.add_column(ratio=1)
-        t.add_column(style=C_DIM, width=16)
 
-        sl = _spark(self._score_hist, 36)
-        lo = min(self._score_hist) if self._score_hist else 0
-        hi = max(self._score_hist) if self._score_hist else 1
-        t.add_row("Score", f"[{C_GOOD}]{sl}[/]", f"{lo:,.0f} ... {hi:,.0f}")
+        sc_vals = list(self._score_hist) if self._score_hist else []
+        if sc_vals:
+            sl = _spark(sc_vals, 36)
+            lo, hi = min(sc_vals), max(sc_vals)
+            t.add_row("Score", f"[{C_GOOD}]{sl}[/]  [dim]{lo:,.0f} .. {hi:,.0f}[/]")
+        else:
+            t.add_row("Score", "[dim]waiting...[/]")
 
-        if self._loss_hist:
-            sl2 = _spark(self._loss_hist, 36)
-            lo2 = min(self._loss_hist); hi2 = max(self._loss_hist)
-            t.add_row("Loss", f"[{C_WARN}]{sl2}[/]", f"{lo2:.4f} ... {hi2:.4f}")
+        loss_vals = list(self._loss_hist) if self._loss_hist else []
+        if loss_vals:
+            sl = _spark(loss_vals, 36)
+            lo, hi = min(loss_vals), max(loss_vals)
+            t.add_row("Loss", f"[{C_WARN}]{sl}[/]  [dim]{lo:.4f} .. {hi:.4f}[/]")
+        else:
+            t.add_row("Loss", "[dim]waiting...[/]")
 
-        if self._gpu_hist:
-            sl3 = _spark(self._gpu_hist, 36)
-            lo3 = min(self._gpu_hist); hi3 = max(self._gpu_hist)
-            t.add_row("GPU %", f"[magenta]{sl3}[/]", f"{lo3:.0f} ... {hi3:.0f}%")
+        gpu_vals = list(self._gpu_hist) if self._gpu_hist else []
+        if gpu_vals:
+            sl = _spark(gpu_vals, 36)
+            lo, hi = min(gpu_vals), max(gpu_vals)
+            t.add_row("GPU %", f"[magenta]{sl}[/]  [dim]{lo:.0f} .. {hi:.0f}%[/]")
+        else:
+            t.add_row("GPU %", "[dim]waiting...[/]")
 
         return Panel(t, title="Trends", border_style="bright_black", padding=(1, 2),
                      title_align="left")
 
     # ── Diagnostics ─────────────────────────────────────────
     def _diagnostics(self):
-        issues = []
-        suggestions = []
+        t = Table.grid(padding=(0, 1))
+        t.add_column(style=C_LABEL, width=10)
+        t.add_column()
 
         gpu = self.gpu.get_stats(0)
+        warn_count = 0
+
         if gpu:
             avg_util = sum(self._gpu_hist) / max(1, len(self._gpu_hist))
             if len(self._gpu_hist) >= 8 and avg_util < 40:
-                issues.append(f"{DOT_WARN} GPU util low ({avg_util:.0f}%)")
-                suggestions.append(f"  -> try --n_envs {min(self.n_envs * 2, 256)}")
+                t.add_row(f"[yellow]WARN[/]", f"GPU util low ({avg_util:.0f}%)")
+                warn_count += 1
             if gpu["mem_pct"] > 95:
-                issues.append(f"{DOT_WARN} VRAM near limit ({gpu['mem_pct']:.0f}%)")
-                suggestions.append("  -> reduce batch_size or n_envs")
+                t.add_row(f"[red]WARN[/]", f"VRAM near limit ({gpu['mem_pct']:.0f}%)")
+                warn_count += 1
             if gpu.get("temp_c", 0) > 85:
-                issues.append(f"{DOT_WARN} GPU hot ({gpu['temp_c']}C)")
-                suggestions.append("  -> check cooling / reduce power limit")
+                t.add_row(f"[red]WARN[/]", f"GPU hot ({gpu['temp_c']}C)")
+                warn_count += 1
 
         if not self.compiled:
-            suggestions.append("  -> install triton for torch.compile (Linux CUDA)")
+            t.add_row(f"[yellow]INFO[/]", "install triton for torch.compile")
+        if warn_count == 0:
+            t.add_row(f"[green]OK[/]", "No issues detected")
 
-        if not issues:
-            issues.append(f"{DOT_OK} No issues detected")
-        if not suggestions:
-            suggestions.append(f"  {DOT_OK} Configuration looks good")
-
-        body = Text()
-        body.append("\n".join(issues))
-        body.append("\n")
-        body.append(Text("\n".join(suggestions), style=C_DIM))
-
-        return Panel(body, title="Status", border_style="bright_black",
+        return Panel(t, title="Status", border_style="bright_black",
                      padding=(1, 2), title_align="left")
 
     # ── Footer ──────────────────────────────────────────────

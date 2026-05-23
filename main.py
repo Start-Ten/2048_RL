@@ -175,9 +175,9 @@ def main():
     # train
     p = sub.add_parser("train", help="Train the DQN agent")
     p.add_argument("--episodes", type=int, default=200000)
-    p.add_argument("--batch-size", type=int, default=1024)
+    p.add_argument("--batch-size", type=int, default=2048)
     p.add_argument("--grad-accum", type=int, default=2)
-    p.add_argument("--n-envs", type=int, default=64)
+    p.add_argument("--n-envs", type=int, default=128)
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--gamma", type=float, default=0.995)
     p.add_argument("--tau", type=float, default=0.005)

@@ -86,14 +86,14 @@ class DQN_V4(nn.Module):
         self.s3 = nn.Sequential(SEBlock(512, 1024), SEBlock(1024, 1024), SEBlock(1024, 1024),
                                 SEBlock(1024, 1024), SEBlock(1024, 1024), SEBlock(1024, 1024))
         self.s4 = nn.Sequential(SEBlock(1024, 1024), SEBlock(1024, 1024), SEBlock(1024, 1024))
-        self.val_conv = nn.Conv2d(1024, 32, 1)
+        self.val_conv = nn.Conv2d(1024, 64, 1)
         self.val_fc = nn.Sequential(nn.ReLU(inplace=True), nn.Flatten(),
-                                     nn.Linear(512, 512), nn.ReLU(inplace=True))
-        self.val_noisy = FactorizedNoisyLinear(512, 1)
-        self.adv_conv = nn.Conv2d(1024, 128, 1)
+                                     nn.Linear(1024, 1024), nn.ReLU(inplace=True))
+        self.val_noisy = FactorizedNoisyLinear(1024, 1)
+        self.adv_conv = nn.Conv2d(1024, 256, 1)
         self.adv_fc = nn.Sequential(nn.ReLU(inplace=True), nn.Flatten(),
-                                     nn.Linear(2048, 512), nn.ReLU(inplace=True))
-        self.adv_noisy = FactorizedNoisyLinear(512, output_size)
+                                     nn.Linear(4096, 1024), nn.ReLU(inplace=True))
+        self.adv_noisy = FactorizedNoisyLinear(1024, output_size)
 
     def forward(self, x):
         x = self.stem(x); x = self.s1(x); x = self.s2(x)

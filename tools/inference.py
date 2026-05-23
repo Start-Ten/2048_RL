@@ -19,8 +19,8 @@ def run_eval(model_path="models_v4/dqn_2048_best_tile.pth", n_games=100):
     env = Game2048(4)
     scores, tiles = [], []
     for _ in tqdm(range(n_games), desc="Evaluating"):
-        env.reset(); done = False
-        while not done:
+        env.reset()
+        while True:
             vm = env.get_valid_moves()
             if not vm: break
             a = agent.select_action(env.get_state(), vm, evaluate=True)

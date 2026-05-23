@@ -8,7 +8,7 @@ from src.engine import Game2048
 # 检测可用设备
 if torch.cuda.is_available():
     device = torch.device("cuda")
-elif torch.xpu.is_available():
+elif hasattr(torch, 'xpu') and torch.xpu.is_available():
     device = torch.device("xpu")
 else:
     device = torch.device("cpu")
@@ -53,99 +53,34 @@ TEXT_COLORS = {
     16384: "#f9f6f2", # 16384+
 }
 
-# 定义DQN网络结构（与训练时相同）
-class DQN(nn.Module):
-    def __init__(self, input_channels, output_size):
-        super(DQN, self).__init__()
-        self.input_channels = input_channels
-        
-        # 卷积层
-        self.conv1 = nn.Conv2d(input_channels, 128, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(128, 128, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(128, 128, kernel_size=3, padding=1)
-        
-        # Dueling DQN架构
-        # 价值流
-        self.value_conv = nn.Conv2d(128, 4, kernel_size=1)
-        self.value_fc1 = nn.Linear(4 * 4 * 4, 128)
-        self.value_fc2 = nn.Linear(128, 1)
-        
-        # 优势流
-        self.advantage_conv = nn.Conv2d(128, 16, kernel_size=1)
-        self.advantage_fc1 = nn.Linear(16 * 4 * 4, 128)
-        self.advantage_fc2 = nn.Linear(128, output_size)
-        
-    def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
-        
-        # 价值流
-        value = F.relu(self.value_conv(x))
-        value = value.view(value.size(0), -1)
-        value = F.relu(self.value_fc1(value))
-        value = self.value_fc2(value)
-        
-        # 优势流
-        advantage = F.relu(self.advantage_conv(x))
-        advantage = advantage.view(advantage.size(0), -1)
-        advantage = F.relu(self.advantage_fc1(advantage))
-        advantage = self.advantage_fc2(advantage)
-        
-        # 合并价值流和优势流
-        q_values = value + advantage - advantage.mean(dim=1, keepdim=True)
-        return q_values
+# 使用训练用的 DQN_V4 网络（与 src/networks.py 相同架构）
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.networks import DQN_V4
 
-# 加载模型（支持CUDA）
 def load_model(model_path, device):
-    model = DQN(4, 4).to(device)  # 将模型移动到指定设备
+    model = DQN_V4(8, 4).to(device)
     try:
-        # 尝试加载模型
-        checkpoint = torch.load(model_path, map_location=device)
-        
-        # 检查检查点是否包含完整的模型状态
-        if 'policy_net_state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['policy_net_state_dict'])
+        ck = torch.load(model_path, map_location=device, weights_only=False)
+        if 'policy_net' in ck:
+            model.load_state_dict(ck['policy_net'])
         else:
-            # 如果检查点不包含policy_net_state_dict，尝试直接加载
-            model.load_state_dict(checkpoint)
-            
+            model.load_state_dict(ck)
         model.eval()
-        print(f"模型成功加载到: {device}")
+        print(f"Model loaded: {model_path}")
         return model
     except Exception as e:
-        print(f"模型加载失败: {e}")
-        # 尝试备选模型路径
-        alt_path = model_path.replace('_best_tile', '')
-        try:
-            checkpoint = torch.load(alt_path, map_location=device)
-            if 'policy_net_state_dict' in checkpoint:
-                model.load_state_dict(checkpoint['policy_net_state_dict'])
-            else:
-                model.load_state_dict(checkpoint)
-            model.eval()
-            print(f"备选模型成功加载: {alt_path}")
-            return model
-        except Exception as e2:
-            print(f"备选模型加载失败: {e2}")
-            return None
-
-# 尝试加载模型
-model_paths = [
-    "models/dqn_2048_best_tile.pth",
-    "models/dqn_2048.pth",
-    "dqn_2048_best_tile.pth",
-    "dqn_2048.pth"
-]
+        print(f"Load failed: {e}")
+        return None
 
 model = None
-for path in model_paths:
+for path in ["models_v4/dqn_2048_best_tile.pth", "models_v4/dqn_2048.pth",
+             "models/dqn_2048_best_tile.pth", "models/dqn_2048.pth"]:
     model = load_model(path, device)
-    if model:
-        break
+    if model: break
 
 if not model:
-    print("警告: 未加载任何模型，AI功能将不可用")
+    print("Warning: no model loaded, AI unavailable")
 
 def render_board(board):
     html = "<div style='background-color:#bbada0; padding:10px; border-radius:6px;'>"
