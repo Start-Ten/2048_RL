@@ -11,12 +11,13 @@ from .engine import Game2048
 
 # Optional C++ engine
 try:
-    import os as _os
-    for _p in [r"C:\mingw64\bin", r"C:\Windows\mingw64\bin"]:
-        if _os.path.isdir(_p): _os.add_dll_directory(_p)
+    import os as _os, sys as _sys
+    if _sys.platform == "win32" and hasattr(_os, 'add_dll_directory'):
+        for _p in [r"C:\mingw64\bin", r"C:\Windows\mingw64\bin"]:
+            if _os.path.isdir(_p): _os.add_dll_directory(_p)
     import game2048_cpp
     CPP_OK = True
-except ImportError:
+except (ImportError, AttributeError):
     game2048_cpp = None
     CPP_OK = False
 
@@ -82,6 +83,7 @@ def _train_single(agent, scheduler, episodes, save_path, ckpt_path, resume):
                                       "grad_accum": agent.grad_accum})
         if monitor:
             monitor.total_episodes = episodes
+            monitor.best_score = best_score; monitor.best_tile = best_tile
             live_ctx = Live(monitor.render(), refresh_per_second=4); live_ctx.__enter__()
 
     pbar = range(start_ep, episodes)
@@ -107,7 +109,8 @@ def _train_single(agent, scheduler, episodes, save_path, ckpt_path, resume):
                     if now - _tui_last > 5.0:
                         _tui_last = now
                         lr = scheduler.get_last_lr()[0]
-                        monitor.update(ep + 1, episodes, env.score, 0, int(env.board.max()),
+                        monitor.update(ep + 1, episodes, env.score, (avg_scores[-1] if avg_scores else 0),
+                                       int(env.board.max()),
                                        ep_loss / max(1, loss_n), lr, total_steps=total_steps,
                                        best_score=best_score, best_tile=best_tile)
                         live_ctx.update(monitor.render())
@@ -189,12 +192,12 @@ def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, resum
                 actions = qv_m.argmax(dim=1).cpu().numpy()
 
                 ns_np, rw_np, dn_np = batch_env.step(actions.astype(np.int32))
+                dn_arr = np.asarray(dn_np); all_done = all_done | dn_arr
                 for i in range(n_envs):
+                    if all_done[i]: continue  # skip done envs to avoid pollution
                     agent.memory.push(np.asarray(states_np)[i], int(actions[i]),
                                       float(np.asarray(rw_np)[i]),
-                                      np.asarray(ns_np)[i], bool(np.asarray(dn_np)[i]), env_id=i)
-
-                all_done = all_done | np.asarray(dn_np)
+                                      np.asarray(ns_np)[i], bool(dn_arr[i]), env_id=i)
                 beta = min(1.0, 0.4 + 0.6 * ep / max(1, episodes * 0.3))
                 loss = agent.optimize_model(beta=beta)
                 if loss > 0: ep_loss += loss; loss_n += 1
@@ -206,7 +209,8 @@ def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, resum
                         _tui_last = now
                         lr = scheduler.get_last_lr()[0]
                         monitor.update(ep + 1, episodes, batch_env.get_scores().mean(),
-                                       0, int(batch_env.get_max_tiles().max()),
+                                       (avg_scores[-1] if avg_scores else 0),
+                                       int(batch_env.get_max_tiles().max()),
                                        ep_loss / max(1, loss_n), lr, total_steps=total_steps,
                                        best_score=best_score, best_tile=best_tile)
                         live_ctx.update(monitor.render())
