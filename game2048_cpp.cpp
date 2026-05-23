@@ -17,20 +17,26 @@ static constexpr int CHANNELS = 8;
 static constexpr int N_CELLS = SIZE * SIZE;
 static constexpr int N_STATE = CHANNELS * N_CELLS;
 
-// ---- slide a row left, return score increment ----
+// ---- slide a row left (correct 2048 rules: no chain merging) ----
 inline int slide_row_left(int row[4]) {
-    int out = 0, sc = 0;
-    for (int i = 0; i < 4; i++) {
-        int val = row[i];
-        if (val == 0) continue;
-        if (out > 0 && row[out - 1] == val) {
-            row[out - 1] = val * 2;
-            sc += val * 2;
+    // Compact non-zeros
+    int nz[4], n = 0;
+    for (int i = 0; i < 4; i++)
+        if (row[i] != 0) nz[n++] = row[i];
+    // Merge identical neighbours, write back
+    int out = 0, sc = 0, i = 0;
+    while (i < n) {
+        if (i + 1 < n && nz[i] == nz[i + 1]) {
+            row[out] = nz[i] * 2;
+            sc += nz[i] * 2;
+            i += 2;
         } else {
-            row[out] = val;
-            out++;
+            row[out] = nz[i];
+            i += 1;
         }
+        out++;
     }
+    // Zero-fill remainder
     for (int i = out; i < 4; i++) row[i] = 0;
     return sc;
 }
@@ -114,7 +120,7 @@ public:
                 int v = board[r][c];
                 int idx = r * SIZE + c;
                 if (v > 0) {
-                    state[idx] = std::log2f((float)v) / 16.0f;
+                    state[idx] = std::log2f((float)v) / 17.0f;
                     if (v > max_val) { max_val = v; max_r = r; max_c = c; }
                 } else {
                     state[N_CELLS + idx] = 1.0f;
@@ -122,27 +128,30 @@ public:
             }
         }
 
-        // channel 2: mergeable neighbours
+        // channel 2: mergeable neighbours (use += for Python consistency)
         for (int r = 0; r < SIZE; r++) {
             for (int c = 0; c < SIZE; c++) {
                 int v = board[r][c];
                 if (v == 0) continue;
                 int idx = r * SIZE + c;
                 if (c < SIZE - 1 && board[r][c + 1] == v) {
-                    state[2 * N_CELLS + idx] = 1.0f;
-                    state[2 * N_CELLS + idx + 1] = 1.0f;
+                    state[2 * N_CELLS + idx] += 1.0f;
+                    state[2 * N_CELLS + idx + 1] += 1.0f;
                 }
                 if (r < SIZE - 1 && board[r + 1][c] == v) {
-                    state[2 * N_CELLS + idx] = 1.0f;
-                    state[2 * N_CELLS + (r + 1) * SIZE + c] = 1.0f;
+                    state[2 * N_CELLS + idx] += 1.0f;
+                    state[2 * N_CELLS + (r + 1) * SIZE + c] += 1.0f;
                 }
             }
         }
 
         if (max_val == 0) return;
 
-        // channel 3: max position
-        state[3 * N_CELLS + max_r * SIZE + max_c] = 1.0f;
+        // channel 3: ALL max-value positions (match Python behaviour)
+        for (int r = 0; r < SIZE; r++)
+            for (int c = 0; c < SIZE; c++)
+                if (board[r][c] == max_val)
+                    state[3 * N_CELLS + r * SIZE + c] = 1.0f;
 
         // channel 4: second max
         int second_val = 0;
@@ -191,11 +200,27 @@ public:
         for (int r = 0; r < SIZE; r++) {
             for (int c = 0; c < SIZE; c++) {
                 int v = board[r][c];
-                if (v == 0) { can[0] = can[1] = can[2] = can[3] = true; goto done; }
-                if (r > 0 && (board[r-1][c] == 0 || board[r-1][c] == v)) can[0] = true;
-                if (r < 3 && (board[r+1][c] == 0 || board[r+1][c] == v)) can[2] = true;
-                if (c > 0 && (board[r][c-1] == 0 || board[r][c-1] == v)) can[3] = true;
-                if (c < 3 && (board[r][c+1] == 0 || board[r][c+1] == v)) can[1] = true;
+                if (v == 0) {
+                    // Empty cell: check which directions could move a tile here
+                    if (!can[0] && r < 3)
+                        for (int k = r + 1; k < SIZE; k++)
+                            if (board[k][c] != 0) { can[0] = true; break; }
+                    if (!can[2] && r > 0)
+                        for (int k = r - 1; k >= 0; k--)
+                            if (board[k][c] != 0) { can[2] = true; break; }
+                    if (!can[3] && c < 3)
+                        for (int k = c + 1; k < SIZE; k++)
+                            if (board[r][k] != 0) { can[3] = true; break; }
+                    if (!can[1] && c > 0)
+                        for (int k = c - 1; k >= 0; k--)
+                            if (board[r][k] != 0) { can[1] = true; break; }
+                    if (can[0] && can[1] && can[2] && can[3]) goto done;
+                    continue;
+                }
+                if (!can[0] && r > 0 && (board[r-1][c] == 0 || board[r-1][c] == v)) can[0] = true;
+                if (!can[2] && r < 3 && (board[r+1][c] == 0 || board[r+1][c] == v)) can[2] = true;
+                if (!can[3] && c > 0 && (board[r][c-1] == 0 || board[r][c-1] == v)) can[3] = true;
+                if (!can[1] && c < 3 && (board[r][c+1] == 0 || board[r][c+1] == v)) can[1] = true;
                 if (can[0] && can[1] && can[2] && can[3]) goto done;
             }
         }
@@ -495,11 +520,26 @@ private:
         for (int r = 0; r < SIZE; r++) {
             for (int c = 0; c < SIZE; c++) {
                 int v = b[r][c];
-                if (v == 0) { can[0]=can[1]=can[2]=can[3]=true; goto done2; }
-                if (r > 0 && (b[r-1][c]==0||b[r-1][c]==v)) can[0]=true;
-                if (r < 3 && (b[r+1][c]==0||b[r+1][c]==v)) can[2]=true;
-                if (c > 0 && (b[r][c-1]==0||b[r][c-1]==v)) can[3]=true;
-                if (c < 3 && (b[r][c+1]==0||b[r][c+1]==v)) can[1]=true;
+                if (v == 0) {
+                    if (!can[0] && r < 3)
+                        for (int k = r+1; k < SIZE; k++)
+                            if (b[k][c] != 0) { can[0] = true; break; }
+                    if (!can[2] && r > 0)
+                        for (int k = r-1; k >= 0; k--)
+                            if (b[k][c] != 0) { can[2] = true; break; }
+                    if (!can[3] && c < 3)
+                        for (int k = c+1; k < SIZE; k++)
+                            if (b[r][k] != 0) { can[3] = true; break; }
+                    if (!can[1] && c > 0)
+                        for (int k = c-1; k >= 0; k--)
+                            if (b[r][k] != 0) { can[1] = true; break; }
+                    if (can[0]&&can[1]&&can[2]&&can[3]) goto done2;
+                    continue;
+                }
+                if (!can[0] && r > 0 && (b[r-1][c]==0||b[r-1][c]==v)) can[0]=true;
+                if (!can[2] && r < 3 && (b[r+1][c]==0||b[r+1][c]==v)) can[2]=true;
+                if (!can[3] && c > 0 && (b[r][c-1]==0||b[r][c-1]==v)) can[3]=true;
+                if (!can[1] && c < 3 && (b[r][c+1]==0||b[r][c+1]==v)) can[1]=true;
                 if (can[0]&&can[1]&&can[2]&&can[3]) goto done2;
             }
         }
@@ -518,7 +558,7 @@ private:
                 int v = b[r][c];
                 int idx = r * SIZE + c;
                 if (v > 0) {
-                    state[idx] = std::log2f((float)v) / 16.0f;
+                    state[idx] = std::log2f((float)v) / 17.0f;
                     if (v > max_val) { max_val = v; max_r = r; max_c = c; }
                 } else {
                     state[N_CELLS + idx] = 1.0f;
@@ -530,12 +570,13 @@ private:
                 int v = b[r][c];
                 if (v == 0) continue;
                 int idx = r * SIZE + c;
-                if (c < SIZE-1 && b[r][c+1]==v) { state[2*N_CELLS+idx]=1.0f; state[2*N_CELLS+idx+1]=1.0f; }
-                if (r < SIZE-1 && b[r+1][c]==v) { state[2*N_CELLS+idx]=1.0f; state[2*N_CELLS+(r+1)*SIZE+c]=1.0f; }
+                if (c < SIZE-1 && b[r][c+1]==v) { state[2*N_CELLS+idx]+=1.0f; state[2*N_CELLS+idx+1]+=1.0f; }
+                if (r < SIZE-1 && b[r+1][c]==v) { state[2*N_CELLS+idx]+=1.0f; state[2*N_CELLS+(r+1)*SIZE+c]+=1.0f; }
             }
         }
         if (max_val == 0) return;
-        state[3*N_CELLS+max_r*SIZE+max_c] = 1.0f;
+        for (int r=0;r<SIZE;r++) for(int c=0;c<SIZE;c++)
+            if(b[r][c]==max_val) state[3*N_CELLS+r*SIZE+c]=1.0f;
         int second_val = 0;
         for (int r=0;r<SIZE;r++) for(int c=0;c<SIZE;c++) {
             int v=b[r][c]; if(v>0&&v<max_val&&v>second_val)second_val=v;

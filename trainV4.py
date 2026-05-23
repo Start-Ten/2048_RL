@@ -542,7 +542,7 @@ class DQN_V4(nn.Module):
 # N-step 经验回放缓冲区
 # ============================================================
 class NStepPrioritizedReplayBuffer:
-    def __init__(self, capacity=200000, alpha=0.6, n_step=3, gamma=0.995):
+    def __init__(self, capacity=200000, alpha=0.6, n_step=3, gamma=0.995, n_envs=1):
         self.capacity = capacity
         self.alpha = alpha
         self.n_step = n_step
@@ -551,40 +551,34 @@ class NStepPrioritizedReplayBuffer:
         self.priorities = np.zeros(capacity)
         self.pos = 0
         self.size = 0
-        # N-step 临时存储
-        self.n_step_buffer = deque(maxlen=n_step)
+        # Per-environment n-step buffers (prevents interleaving in batch mode)
+        self.n_step_buffer = [deque(maxlen=n_step) for _ in range(max(1, n_envs))]
 
-    def _get_n_step_transition(self):
-        """计算 N-step 回报"""
-        if len(self.n_step_buffer) < self.n_step:
-            return None
-        state, action, _, _, _ = self.n_step_buffer[0]
-        reward = 0.0
-        for i in range(self.n_step):
-            reward += (self.gamma ** i) * self.n_step_buffer[i][2]
-        _, _, _, next_state, done = self.n_step_buffer[-1]
-        return state, action, reward, next_state, done
-
-    def push(self, state, action, reward, next_state, done):
-        self.n_step_buffer.append((state, action, reward, next_state, done))
-        if len(self.n_step_buffer) < self.n_step:
+    def push(self, state, action, reward, next_state, done, env_id=0):
+        # env_id: for batch mode, each env has its own n-step buffer
+        n_step_buf = self.n_step_buffer[env_id]
+        n_step_buf.append((state, action, reward, next_state, done))
+        if done:
+            # Episode ended: flush all remaining transitions for this env
+            while len(n_step_buf) >= 1:
+                s0, a0, _, _, _ = n_step_buf[0]
+                r_acc = 0.0
+                for t in range(len(n_step_buf)):
+                    r_acc += (self.gamma ** t) * n_step_buf[t][2]
+                _, _, _, ns_last, d_last = n_step_buf[-1]
+                self._store(s0, a0, r_acc, ns_last, d_last)
+                n_step_buf.popleft()
             return
-        transition = self._get_n_step_transition()
-        if transition is None:
+        if len(n_step_buf) < self.n_step:
             return
-        s, a, r, ns, d = transition
-        self._store(s, a, r, ns, d)
-
-    def flush_n_step(self):
-        """训练结束时刷新剩余的 N-step buffer"""
-        while len(self.n_step_buffer) > 1:
-            state, action, reward, _, _ = self.n_step_buffer[0]
-            gamma_sum = 0.0
-            for i, item in enumerate(self.n_step_buffer):
-                gamma_sum += (self.gamma ** i) * item[2]
-            _, _, _, next_state, done = self.n_step_buffer[-1]
-            self._store(state, action, gamma_sum, next_state, done)
-            self.n_step_buffer.popleft()
+        # Compute n-step return
+        s0, a0, _, _, _ = n_step_buf[0]
+        r_acc = 0.0
+        for t in range(self.n_step):
+            r_acc += (self.gamma ** t) * n_step_buf[t][2]
+        _, _, _, ns_n, d_n = n_step_buf[self.n_step - 1]
+        self._store(s0, a0, r_acc, ns_n, d_n)
+        n_step_buf.popleft()  # Slide window
 
     def _store(self, state, action, reward, next_state, done):
         max_priority = self.priorities.max() if self.buffer else 1.0
@@ -656,7 +650,7 @@ class DQNAgent:
             self.policy_net.parameters(), lr=lr, weight_decay=1e-4
         )
         self.memory = NStepPrioritizedReplayBuffer(
-            capacity=200000, alpha=0.6, n_step=3, gamma=gamma
+            capacity=200000, alpha=0.6, n_step=3, gamma=gamma, n_envs=128
         )
         self.loss_fn = nn.SmoothL1Loss(reduction='none')
 
@@ -784,7 +778,7 @@ class DQNAgent:
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             self.steps_done = checkpoint.get('steps_done', 0)
             self.grad_step = checkpoint.get('grad_step', 0)
-            if 'scaler_state_dict' in checkpoint:
+            if 'scaler_state_dict' in checkpoint and self.scaler is not None:
                 self.scaler.load_state_dict(checkpoint['scaler_state_dict'])
             for p in self.target_net.parameters():
                 p.requires_grad = False
@@ -913,9 +907,9 @@ def train_agent_batch(agent, n_envs, scheduler, episodes=100000,
      for episode in progress_bar:
         # 重置所有环境
         states_np = batch_env.reset()
-        # 重置 n_step buffer 的残留
-        for _ in range(agent.memory.n_step):
-            agent.memory.n_step_buffer.clear()
+        # Clear per-env n-step buffers
+        for buf in agent.memory.n_step_buffer:
+            buf.clear()
 
         ep_loss = 0.0
         ep_loss_count = 0
@@ -955,7 +949,8 @@ def train_agent_batch(agent, n_envs, scheduler, episodes=100000,
                     int(actions[i]),
                     float(np.asarray(rewards_np)[i]),
                     np.asarray(next_states_np)[i],
-                    bool(np.asarray(dones_np)[i])
+                    bool(np.asarray(dones_np)[i]),
+                    env_id=i
                 )
 
             total_rewards += np.asarray(rewards_np, dtype=np.float32)
@@ -978,7 +973,7 @@ def train_agent_batch(agent, n_envs, scheduler, episodes=100000,
             states_np = next_states_np
 
         # 刷新 N-step buffer
-        agent.memory.flush_n_step()
+        # n-step buffering handled in push() per-env with done=true flush
 
         # ---- 统计 ----
         final_scores = batch_env.get_scores()
@@ -1118,7 +1113,7 @@ def train_agent(agent, env, scheduler, episodes=100000,
             scheduler.step()
 
         # 刷新 N-step buffer 残留
-        agent.memory.flush_n_step()
+        # n-step buffering handled in push() per-env with done=true flush
 
         score = env.score
         max_tile = int(np.max(env.board))
