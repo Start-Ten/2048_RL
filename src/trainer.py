@@ -87,6 +87,7 @@ def _train_single(agent, scheduler, episodes, save_path, ckpt_path, resume):
     pbar = range(start_ep, episodes)
     if monitor is None: pbar = tqdm(pbar, desc="Training")
 
+    _tui_last = 0.0
     try:
         for ep in pbar:
             state = env.reset(); ep_loss = 0.0; loss_n = 0
@@ -100,6 +101,16 @@ def _train_single(agent, scheduler, episodes, save_path, ckpt_path, resume):
                 beta = min(1.0, 0.4 + 0.6 * ep / max(1, episodes * 0.3))
                 loss = agent.optimize_model(beta=beta)
                 if loss > 0: ep_loss += loss; loss_n += 1
+                # Periodic TUI refresh (~5s)
+                if monitor and live_ctx and total_steps % 50 == 0:
+                    now = time.time()
+                    if now - _tui_last > 5.0:
+                        _tui_last = now
+                        lr = scheduler.get_last_lr()[0]
+                        monitor.update(ep + 1, episodes, env.score, 0, int(env.board.max()),
+                                       ep_loss / max(1, loss_n), lr, total_steps=total_steps,
+                                       best_score=best_score, best_tile=best_tile)
+                        live_ctx.update(monitor.render())
                 if d: break
 
             sc = env.score; mt = int(np.max(env.board))
@@ -161,6 +172,7 @@ def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, resum
     pbar = range(start_ep, episodes)
     if monitor is None: pbar = tqdm(pbar, desc="Training Batch")
 
+    _tui_last = 0.0
     try:
         for ep in pbar:
             states_np = batch_env.reset(); agent.memory.clear_env_buffers()
@@ -187,6 +199,17 @@ def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, resum
                 loss = agent.optimize_model(beta=beta)
                 if loss > 0: ep_loss += loss; loss_n += 1
                 total_steps += 1; scheduler.step(); states_np = ns_np
+                # Periodic TUI refresh (~5s)
+                if monitor and live_ctx and total_steps % 20 == 0:
+                    now = time.time()
+                    if now - _tui_last > 5.0:
+                        _tui_last = now
+                        lr = scheduler.get_last_lr()[0]
+                        monitor.update(ep + 1, episodes, batch_env.get_scores().mean(),
+                                       0, int(batch_env.get_max_tiles().max()),
+                                       ep_loss / max(1, loss_n), lr, total_steps=total_steps,
+                                       best_score=best_score, best_tile=best_tile)
+                        live_ctx.update(monitor.render())
 
             sc = batch_env.get_scores().mean()
             mt = int(batch_env.get_max_tiles().max())

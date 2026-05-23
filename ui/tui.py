@@ -55,39 +55,21 @@ C_DIM     = "dim"
 C_MUTED   = "bright_black"
 
 # ── Status dots ────────────────────────────────────────────
-DOT_OK   = "[green]*[/]"
-DOT_WARN = "[yellow]*[/]"
-DOT_OFF  = "[bright_black]-[/]"
+DOT_OK   = "[green]OK[/]"
+DOT_WARN = "[yellow]!![/]"
+DOT_OFF  = "[bright_black]--[/]"
 
 # ── Block chars ────────────────────────────────────────────
 BLOCKS = " ·▪▎▌▊█"
 
 
-def _bar_ascii(value, max_val, width=16):
-    """Simple ASCII bar chart"""
+def _plain_bar(value, max_val, width=20):
+    """Plain ASCII bar (no internal markup - caller wraps in color tag)."""
     if max_val == 0: max_val = 1
     ratio = max(0.0, min(1.0, value / max_val))
-    full = int(ratio * width)
-    result = []
-    for i in range(width):
-        if i < full: result.append("#")
-        else: result.append(" ")
-    return "".join(result)
-
-
-def _gradient_bar(value, max_val, width=16):
-    """Gradient bar (ASCII-only for cross-platform safety)"""
-    if max_val == 0: max_val = 1
-    ratio = max(0.0, min(1.0, value / max_val))
-    full = int(ratio * width)
-    if ratio < 0.33: c = "red"
-    elif ratio < 0.66: c = "yellow"
-    else: c = "green"
-    result = []
-    for i in range(width):
-        if i < full: result.append(f"[{c}]#[/]")
-        else: result.append(f"[bright_black]-[/]")
-    return "".join(result)
+    filled = int(ratio * width)
+    filled = max(0, min(filled, width))
+    return "#" * filled + "-" * (width - filled)
 
 
 def _spark(data, width=28):
@@ -313,91 +295,62 @@ class TrainingMonitor:
                          title="GPU", border_style="bright_black", padding=(1, 2),
                          title_align="left")
 
-        rows = []
+        t = Table.grid(padding=(0, 2))
+        t.add_column(style=C_LABEL, width=7)
+        t.add_column(ratio=1)
 
         # Utilization
         u = s["util_gpu"]
         uc = C_GOOD if u > 70 else (C_WARN if u > 30 else C_BAD)
-        bar = _gradient_bar(u, 100, 18)
-        rows.append(Text.assemble(
-            self._label(" GPU  "), bar, f" [{uc}]{u}%[/]"
-        ))
+        bar = _plain_bar(u, 100, 20)
+        t.add_row("GPU", f"[{uc}]{bar}[/] [{uc}]{u}%[/]")
 
         # VRAM
         m = s["mem_pct"]
         mc = C_BAD if m > 90 else C_GOOD
-        bar2 = _gradient_bar(m, 100, 18)
-        rows.append(Text.assemble(
-            self._label(" VRAM "), bar2,
-            f" [{mc}]{s['mem_used']:.1f}/{s['mem_total']:.1f} GB[/]"
-        ))
+        bar2 = _plain_bar(m, 100, 20)
+        t.add_row("VRAM", f"[{mc}]{bar2}[/] [{mc}]{s['mem_used']:.1f}/{s['mem_total']:.1f} GB[/]")
 
         # Power
         if s.get("power_w") and s.get("power_limit_w"):
             pct = s["power_w"] / s["power_limit_w"] * 100
             pc = C_WARN if pct > 90 else C_GOOD
-            bar3 = _gradient_bar(pct, 100, 18)
-            rows.append(Text.assemble(
-                self._label(" Power"), bar3,
-                f" [{pc}]{s['power_w']:.0f}/{s['power_limit_w']:.0f}W[/]"
-            ))
+            bar3 = _plain_bar(pct, 100, 20)
+            t.add_row("Power", f"[{pc}]{bar3}[/] [{pc}]{s['power_w']:.0f}/{s['power_limit_w']:.0f}W[/]")
 
         # Temperature
         if s.get("temp_c") is not None:
             tc = C_BAD if s["temp_c"] > 80 else (C_WARN if s["temp_c"] > 70 else C_GOOD)
-            bar4 = _gradient_bar(s["temp_c"], 90, 18)
-            rows.append(Text.assemble(
-                self._label(" Temp "), bar4,
-                f" [{tc}]{s['temp_c']}C[/]"
-            ))
+            bar4 = _plain_bar(s["temp_c"], 90, 20)
+            t.add_row("Temp", f"[{tc}]{bar4}[/] [{tc}]{s['temp_c']}C[/]")
 
-        return Panel(
-            Group(*rows),
-            title=f"[white]{s['name']}[/]",
-            border_style="bright_black", padding=(1, 2), title_align="left"
-        )
+        return Panel(t, title=f"[white]{s['name']}[/]",
+                     border_style="bright_black", padding=(1, 2), title_align="left")
 
     # ── Sparklines ──────────────────────────────────────────
     def _sparklines(self):
-        lines = []
+        t = Table.grid(padding=(0, 1))
+        t.add_column(style=C_LABEL, width=7)
+        t.add_column(ratio=1)
+        t.add_column(style=C_DIM, width=16)
 
-        # Score sparkline
-        sl = _spark(self._score_hist, 44)
+        sl = _spark(self._score_hist, 36)
         lo = min(self._score_hist) if self._score_hist else 0
         hi = max(self._score_hist) if self._score_hist else 1
-        lines.append(Text.assemble(
-            (f" Score  ", C_LABEL),
-            (f"{sl} ", C_GOOD),
-            (f" {lo:,.0f} ... {hi:,.0f}", C_DIM)
-        ))
+        t.add_row("Score", f"[{C_GOOD}]{sl}[/]", f"{lo:,.0f} ... {hi:,.0f}")
 
-        # Loss sparkline
         if self._loss_hist:
-            sl2 = _spark(self._loss_hist, 44)
-            lo2 = min(self._loss_hist)
-            hi2 = max(self._loss_hist)
-            lines.append(Text.assemble(
-                (f" Loss   ", C_LABEL),
-                (f"{sl2} ", C_WARN),
-                (f" {lo2:.4f} ... {hi2:.4f}", C_DIM)
-            ))
+            sl2 = _spark(self._loss_hist, 36)
+            lo2 = min(self._loss_hist); hi2 = max(self._loss_hist)
+            t.add_row("Loss", f"[{C_WARN}]{sl2}[/]", f"{lo2:.4f} ... {hi2:.4f}")
 
-        # GPU util sparkline
         if self._gpu_hist:
-            sl3 = _spark(self._gpu_hist, 44)
-            lo3 = min(self._gpu_hist)
-            hi3 = max(self._gpu_hist)
-            lines.append(Text.assemble(
-                (f" GPU %  ", C_LABEL),
-                (f"{sl3} ", "magenta"),
-                (f" {lo3:.0f} ... {hi3:.0f}%", C_DIM)
-            ))
+            sl3 = _spark(self._gpu_hist, 36)
+            lo3 = min(self._gpu_hist); hi3 = max(self._gpu_hist)
+            t.add_row("GPU %", f"[magenta]{sl3}[/]", f"{lo3:.0f} ... {hi3:.0f}%")
 
-        return Panel(
-            Group(*lines),
-            title="Trends", border_style="bright_black", padding=(1, 2),
-            title_align="left"
-        )
+        return Panel(t, title="Trends", border_style="bright_black", padding=(1, 2),
+                     title_align="left")
 
     # ── Diagnostics ─────────────────────────────────────────
     def _diagnostics(self):

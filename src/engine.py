@@ -37,18 +37,17 @@ class Game2048:
     def _slide_row_left(self, row):
         nz = row[row != 0]
         if len(nz) == 0: return False, 0
-        buf = self._slide_bufs[0]; idx = 0; merged = False; sc = 0
+        buf = self._slide_bufs[0]; idx = 0; sc = 0
         i = 0; n = len(nz)
         while i < n:
             if i + 1 < n and nz[i] == nz[i + 1]:
-                buf[idx] = nz[i] * 2; sc += nz[i] * 2; merged = True; i += 2
+                buf[idx] = nz[i] * 2; sc += nz[i] * 2; i += 2
             else:
                 buf[idx] = nz[i]; i += 1
             idx += 1
         buf[idx:] = 0
-        pos = np.flatnonzero(row)
-        moved = (len(pos) == 0 or pos[0] != 0 or merged)
-        return moved or merged, sc
+        moved = not np.array_equal(row[:idx], buf[:idx])
+        return moved, sc
 
     def move(self, direction):
         old = self._board.copy(); old_score = self._score; moved = False

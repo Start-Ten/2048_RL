@@ -64,8 +64,7 @@ def cmd_train(args):
     if args.resume and os.path.exists(model_path):
         try:
             agent.load(model_path)
-            ck = torch.load(ckpt_path, map_location=agent.policy_net.device if False else 'cpu',
-                            weights_only=False)
+            ck = torch.load(ckpt_path, map_location='cpu', weights_only=False)
             start_ep = ck.get('episode', 0)
             print(f"Resumed from episode {start_ep}")
         except Exception as e:

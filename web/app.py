@@ -179,31 +179,31 @@ def make_move(direction):
     """执行移动操作并更新界面"""
     direction_names = ["上", "右", "下", "左"]
     
-    # 执行移动
-    new_board, game_over = game.move(direction)
-    
-    # 渲染棋盘
-    board_html = render_board(new_board)
+    # 执行移动 (move returns state, reward, game_over)
+    state, reward, is_over = game.move(direction)
+
+    # 渲染棋盘 (use actual board, not state)
+    board_html = render_board(game.board)
     
     # 更新状态信息
     status = f"<b>移动方向:</b> {direction_names[direction]}"
     status += f"<br><b>当前分数:</b> {game.score}"
     status += f"<br><b>最大方块:</b> {np.max(game.board)}"
     
-    if game.game_over:
+    if is_over:
         status += "<br><br><div style='color:#ff0000; font-weight:bold;'>游戏结束!</div>"
         status += f"<br><b>最终分数:</b> {game.score}"
-    
+
     return board_html, status
 
 def reset_game():
     """重置游戏"""
     global game
     game = Game2048(size=4)
-    board = game.reset()
-    
+    game.reset()  # returns state, we use game.board for rendering
+
     # 渲染棋盘
-    board_html = render_board(board)
+    board_html = render_board(game.board)
     
     # 初始状态信息
     status = "<b>游戏已重置!</b>"
@@ -243,17 +243,17 @@ def ai_move():
         
         # 执行移动
         direction_names = ["上", "右", "下", "左"]
-        new_board, game_over = game.move(action)
-        
+        game.move(action)  # returns (state, reward, game_over)
+
         # 渲染棋盘
-        board_html = render_board(new_board)
-        
+        board_html = render_board(game.board)
+
         # 更新状态信息
         status = f"<b>AI移动方向:</b> {direction_names[action]}"
         status += f"<br><b>当前分数:</b> {game.score}"
         status += f"<br><b>最大方块:</b> {np.max(game.board)}"
         status += f"<br><b>设备:</b> {'GPU' if device.type == 'cuda' else 'CPU'}"
-        
+
         if game.game_over:
             status += "<br><br><div style='color:#ff0000; font-weight:bold;'>游戏结束!</div>"
             status += f"<br><b>最终分数:</b> {game.score}"
