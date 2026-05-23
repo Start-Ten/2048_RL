@@ -26,10 +26,16 @@ if _USE_COMPILE:
         _USE_COMPILE = False
 
 
-# Enable performance optimizations
+# Performance optimizations
 if DEVICE.type == "cuda":
     torch.backends.cudnn.benchmark = True
     torch.set_float32_matmul_precision('high')
+    # Detect BF16 support (Ampere+ / compute capability >= 8.0)
+    _BF16_OK = torch.cuda.is_bf16_supported()
+    AMP_DTYPE = torch.bfloat16 if _BF16_OK else torch.float16
+else:
+    _BF16_OK = False
+    AMP_DTYPE = torch.float16
 
 class DQNAgent:
     def __init__(self, input_channels=8, action_size=4, lr=3e-4, gamma=0.995,
@@ -57,6 +63,7 @@ class DQNAgent:
 
         self.use_amp = DEVICE.type in ("cuda", "xpu")
         self.scaler = torch.amp.GradScaler(DEVICE_STR) if self.use_amp else None
+        print(f"AMP: {'BF16' if (_BF16_OK and self.use_amp) else 'FP16' if self.use_amp else 'off'}")
         self.steps_done = 0; self.grad_step = 0
 
     def select_action(self, state, valid_moves, evaluate=False):
@@ -79,7 +86,7 @@ class DQNAgent:
         dones = dones.to(DEVICE); weights = weights.to(DEVICE)
 
         self.policy_net.reset_noise(); self.target_net.reset_noise()
-        ctx = torch.amp.autocast(DEVICE_STR) if self.use_amp else nullcontext()
+        ctx = torch.amp.autocast(DEVICE_STR, dtype=AMP_DTYPE) if self.use_amp else nullcontext()
         with ctx:
             cur_q = self.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze()
             with torch.no_grad():

@@ -270,6 +270,7 @@ class TrainingMonitor:
 
         t.add_row("Engine", f"[green]OK[/] C++" if self.cpp else f"[bright_black]--[/] Python")
         t.add_row("Compile", f"[green]OK[/] ON" if self.compiled else f"[bright_black]--[/] off")
+        t.add_row("Precision", self.cfg.get("amp", "[bright_black]--[/]"))
         t.add_row("Env", f"x{self.n_envs}" if self.n_envs > 1 else "single")
         t.add_row("Params", f"{self.params_m:.0f}M")
         bs = self.cfg.get("batch_size", "--")

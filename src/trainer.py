@@ -6,7 +6,7 @@ import torch
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-from .agent import DEVICE
+from .agent import DEVICE, _BF16_OK
 from .engine import Game2048
 
 # Optional C++ engine
@@ -80,7 +80,9 @@ def _train_single(agent, scheduler, episodes, save_path, ckpt_path, resume):
         monitor = create_monitor(cpp=CPP_OK, compiled=agent.compiled, n_envs=1,
                                  params=total_p,
                                  cfg={"batch_size": agent.batch_size,
-                                      "grad_accum": agent.grad_accum})
+                                      "grad_accum": agent.grad_accum,
+                                      "amp": "BF16" if (agent.use_amp and _BF16_OK) else
+                                             "FP16" if agent.use_amp else "FP32"})
         if monitor:
             monitor.total_episodes = episodes
             monitor.best_score = best_score; monitor.best_tile = best_tile
@@ -167,7 +169,9 @@ def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, resum
         monitor = create_monitor(cpp=CPP_OK, compiled=agent.compiled, n_envs=n_envs,
                                  params=total_p,
                                  cfg={"batch_size": agent.batch_size,
-                                      "grad_accum": agent.grad_accum})
+                                      "grad_accum": agent.grad_accum,
+                                      "amp": "BF16" if (agent.use_amp and _BF16_OK) else
+                                             "FP16" if agent.use_amp else "FP32"})
         if monitor:
             monitor.total_episodes = episodes; monitor.best_score = best_score; monitor.best_tile = best_tile
             live_ctx = Live(monitor.render(), refresh_per_second=4); live_ctx.__enter__()
