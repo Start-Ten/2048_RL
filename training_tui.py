@@ -64,52 +64,47 @@ BLOCKS = " ·▪▎▌▊█"
 
 
 def _bar_ascii(value, max_val, width=16):
-    """精细的条形图（半宽字符）"""
+    """Simple ASCII bar chart"""
     if max_val == 0: max_val = 1
     ratio = max(0.0, min(1.0, value / max_val))
-    full = int(ratio * width * 2)
+    full = int(ratio * width)
     result = []
     for i in range(width):
-        remain = full - i * 2
-        if remain >= 2: result.append("█")
-        elif remain == 1: result.append("▌")
+        if i < full: result.append("#")
         else: result.append(" ")
     return "".join(result)
 
 
 def _gradient_bar(value, max_val, width=16):
-    """渐变颜色条形图"""
+    """Gradient bar (ASCII-only for cross-platform safety)"""
     if max_val == 0: max_val = 1
     ratio = max(0.0, min(1.0, value / max_val))
-    full = int(ratio * width * 2)
-    colors = ["red", "yellow", "green"]
+    full = int(ratio * width)
     if ratio < 0.33: c = "red"
     elif ratio < 0.66: c = "yellow"
     else: c = "green"
     result = []
     for i in range(width):
-        remain = full - i * 2
-        if remain >= 2: result.append(f"[{c}]█[/]")
-        elif remain == 1: result.append(f"[{c}]▌[/]")
-        else: result.append(f"[bright_black]·[/]")
+        if i < full: result.append(f"[{c}]#[/]")
+        else: result.append(f"[bright_black]-[/]")
     return "".join(result)
 
 
 def _spark(data, width=28):
-    """sparkline 微型趋势图"""
+    """Sparkline trend chart (ASCII-only)"""
     if len(data) < 2:
-        return "[bright_black]" + "·" * width + "[/]"
+        return "[bright_black]" + "-" * width + "[/]"
     d = list(data)
     lo, hi = min(d), max(d)
     if hi == lo: hi = lo + 1
-    chars = " ▁▂▃▄▅▆▇█"
+    chars = " _.~=*#@H"
     result = []
     step = max(1, len(d) // width)
     for i in range(0, len(d), step):
         chunk = d[i:i + step]
         avg = sum(chunk) / len(chunk)
-        idx = int((avg - lo) / (hi - lo) * 8) + 1
-        result.append(chars[max(1, min(idx, 8))])
+        idx = int((avg - lo) / (hi - lo) * 8)
+        result.append(chars[max(0, min(idx, 8))])
     return "".join(result[-width:])
 
 
@@ -185,7 +180,8 @@ class TrainingMonitor:
         self._step_n = 0
         self._last_n = 0
 
-        self.ep = 0; self.total = 0; self.score = 0; self.avg_score = 0
+        self.ep = 0; self.total = 0; self.total_episodes = 0
+        self.score = 0; self.avg_score = 0
         self.tile = 0; self.loss = 0.0; self.lr = 0.0
         self.steps = 0; self.best_score = 0; self.best_tile = 0
         self.stps = 0.0
@@ -232,17 +228,19 @@ class TrainingMonitor:
         elapsed = int(time.time() - self.t0)
         h, m, s = elapsed // 3600, (elapsed % 3600) // 60, elapsed % 60
 
-        pct = f"{self.ep / max(1, self.total) * 100:.1f}%" if self.total else "--"
+        # Use total_episodes if set externally, otherwise from update()
+        _total = self.total_episodes if self.total_episodes > 0 else self.total
+        pct = f"{(self.ep / _total * 100):.1f}%" if _total > 0 else "--"
         eta = ""
-        if self.ep > 10 and self.total > 0 and self.stps > 0:
-            steps_left = (self.total - self.ep) * 600
+        if self.ep > 10 and _total > 0 and self.stps > 0:
+            steps_left = (_total - self.ep) * 600
             eta_s = int(steps_left / self.stps)
             eh, em = eta_s // 3600, (eta_s % 3600) // 60
             eta = f"  ETA {eh}h{em:02d}m"
 
         left = Text()
         left.append(" 2048 DQN V4 ", style=f"bold {C_HEADER}")
-        left.append(f" Ep {self.ep:,}/{self.total:,} ", style=C_VALUE)
+        left.append(f" Ep {self.ep:,}/{_total:,} ", style=C_VALUE)
         left.append(f"({pct}) ", style=C_DIM)
         left.append(f"T+{h}h{m:02d}m ", style=C_MUTED)
         if eta: left.append(eta, style=C_MUTED)

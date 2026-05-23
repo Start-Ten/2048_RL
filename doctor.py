@@ -67,12 +67,38 @@ class Doctor:
             if torch.cuda.is_available():
                 count = torch.cuda.device_count()
                 name = torch.cuda.get_device_name(0)
-                mem_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                props = torch.cuda.get_device_properties(0)
+                mem_gb = props.total_memory / 1024**3
+                cc = f"sm_{props.major}{props.minor}"
                 cuda_ver = torch.version.cuda
                 self._check("CUDA available", True,
-                            f"GPU: {name} | VRAM: {mem_gb:.1f}GB | CUDA {cuda_ver}")
+                            f"GPU: {name} | VRAM: {mem_gb:.1f}GB | CC {cc} | CUDA {cuda_ver}")
                 self._check("CUDA >= 11.8", cuda_ver and float(cuda_ver) >= 11.8,
                             f"CUDA {cuda_ver}", critical=False)
+
+                # Check Blackwell (sm_120) requires PyTorch 2.7+ with CUDA 12.8
+                if props.major >= 12:
+                    pt_ver = tuple(int(x) for x in torch.__version__.split(".")[:2])
+                    if pt_ver < (2, 7) or float(cuda_ver or 0) < 12.8:
+                        self._check(
+                            "Blackwell GPU support", False,
+                            f"RTX 50 series needs PyTorch>=2.7 with CUDA>=12.8. "
+                            f"Current: PyTorch {torch.__version__}+cu{cuda_ver}",
+                            critical=True
+                        )
+                        if self.auto_fix:
+                            print(f"  {C}Installing PyTorch 2.7+ CUDA 12.8 for Blackwell GPU...{D}")
+                            try:
+                                subprocess.check_call(
+                                    [sys.executable, "-m", "pip", "install", "torch",
+                                     "--index-url", "https://download.pytorch.org/whl/cu128",
+                                     "--force-reinstall", "--no-deps", "-q"],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                                )
+                                self.fixes_applied.append("installed PyTorch 2.7+ CUDA 12.8")
+                                print(f"  {G}Installed. Please restart the script.{D}")
+                            except Exception as e:
+                                print(f"  {R}Failed: {e}{D}")
 
                 # cuDNN
                 try:

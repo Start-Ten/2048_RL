@@ -37,27 +37,48 @@ echo [1/5] Checking Python + PyTorch CUDA...
 python --version >nul 2>&1 || (echo ERROR: Python not found & exit /b 1)
 python --version
 
-:: Check if PyTorch has CUDA; if GPU exists but PyTorch is CPU-only, fix it
+:: Check GPU compatibility with PyTorch
 nvidia-smi -L >nul 2>&1
 if %errorlevel% equ 0 (
-    python -c "import torch; assert torch.cuda.is_available(), 'CPU-only'" >nul 2>&1
+    :: Detect Blackwell GPU (RTX 50 series, sm_120)
+    for /f "usebackq tokens=*" %%g in (`python -c "import torch; p=torch.cuda.get_device_properties(0); print(f'{p.major}{p.minor}')" 2^>nul`) do set "CC=%%g"
+
+    python -c "import torch; assert torch.cuda.is_available()" >nul 2>&1
     if %errorlevel% neq 0 (
         echo   NVIDIA GPU detected but PyTorch is CPU-only
-        echo   Installing PyTorch with CUDA support...
-        python -m pip install torch --index-url https://download.pytorch.org/whl/cu124 --force-reinstall --no-deps -q
+        echo   Installing PyTorch with CUDA 12.8...
+        python -m pip install torch --index-url https://download.pytorch.org/whl/cu128 --force-reinstall --no-deps -q
         if %errorlevel% equ 0 (
-            echo   CUDA PyTorch installed. Restarting...
-            :: Re-run this script
+            echo   Installed. Restarting script...
             call "%~f0" %*
             exit /b 0
         ) else (
-            echo   WARNING: CUDA install failed, continuing with CPU
+            echo   WARNING: install failed
         )
     ) else (
-        echo   PyTorch CUDA: OK
+        :: Check Blackwell (CC >= 120)
+        if "%CC%" geq "120" (
+            for /f "usebackq tokens=*" %%v in (`python -c "import torch; print(torch.__version__.split('+')[0])" 2^>nul`) do set "PT_VER=%%v"
+            echo   RTX 50 series (Blackwell sm_%CC%) detected - needs PyTorch 2.7+ CUDA 12.8
+            echo   Current: PyTorch !PT_VER!
+            echo   Installing PyTorch CUDA 12.8...
+            python -m pip install torch --index-url https://download.pytorch.org/whl/cu128 --force-reinstall --no-deps -q
+            if %errorlevel% equ 0 (
+                echo   Installed. Restarting script...
+                call "%~f0" %*
+                exit /b 0
+            ) else (
+                echo   WARNING: install failed, trying nightly...
+                python -m pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128 --force-reinstall --no-deps -q
+                call "%~f0" %*
+                exit /b 0
+            )
+        ) else (
+            echo   PyTorch CUDA: OK (sm_%CC%)
+        )
     )
 ) else (
-    echo   PyTorch CPU mode
+    echo   No NVIDIA GPU - CPU training
 )
 
 echo.
@@ -86,6 +107,9 @@ echo   Log: %LOG_FILE%
 echo   Press Ctrl+C to stop.
 echo.
 
+:: Force UTF-8 encoding for TUI rendering
+set PYTHONIOENCODING=utf-8
+set CUDA_LAUNCH_BLOCKING=0
 python -u trainV4.py > "%LOG_FILE%" 2>&1
 
 echo.
