@@ -1,0 +1,37 @@
+# Models & checkpoints
+models/
+models_v4/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+
+# Training outputs
+*.log
+logs/
+training_progress*.png
+final_training_results.png
+inference_results/
+result.txt
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.venv/
+venv/
+
+# Doctor flag
+.doctor_ok
