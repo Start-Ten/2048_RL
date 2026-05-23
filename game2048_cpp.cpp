@@ -166,9 +166,10 @@ public:
                     if (board[r][c] == second_val)
                         state[4 * N_CELLS + r * SIZE + c] = 1.0f;
 
-        // channel 7: max at corner
-        if ((max_r == 0 && max_c == 0) || (max_r == 0 && max_c == 3) ||
-            (max_r == 3 && max_c == 0) || (max_r == 3 && max_c == 3))
+        // channel 7: max at corner (check ALL corners, not just first max)
+        bool corner_max = (board[0][0] == max_val) || (board[0][3] == max_val) ||
+                          (board[3][0] == max_val) || (board[3][3] == max_val);
+        if (corner_max)
             state[7 * N_CELLS + max_r * SIZE + max_c] = 1.0f;
 
         // channel 5: row monotonic
@@ -583,8 +584,9 @@ private:
         }
         if(second_val>0) for(int r=0;r<SIZE;r++) for(int c=0;c<SIZE;c++)
             if(b[r][c]==second_val) state[4*N_CELLS+r*SIZE+c]=1.0f;
-        if((max_r==0&&max_c==0)||(max_r==0&&max_c==3)||(max_r==3&&max_c==0)||(max_r==3&&max_c==3))
-            state[7*N_CELLS+max_r*SIZE+max_c]=1.0f;
+        bool corner_max = (b[0][0]==max_val) || (b[0][3]==max_val) ||
+                          (b[3][0]==max_val) || (b[3][3]==max_val);
+        if(corner_max) state[7*N_CELLS+max_r*SIZE+max_c]=1.0f;
 
         for (int r=0;r<SIZE;r++) {
             int nz[4], n=0;

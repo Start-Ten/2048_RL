@@ -179,7 +179,9 @@ def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, resum
     try:
         for ep in pbar:
             states_np = batch_env.reset(); agent.memory.clear_env_buffers()
-            ep_loss = 0.0; loss_n = 0; step_n = 0; all_done = np.zeros(n_envs, dtype=bool)
+            ep_loss = 0.0; loss_n = 0; step_n = 0
+            all_done = np.zeros(n_envs, dtype=bool)
+            pushed_done = np.zeros(n_envs, dtype=bool)  # track first terminal push
 
             while not all_done.all() and step_n < 2000:
                 step_n += 1
@@ -194,10 +196,12 @@ def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, resum
                 ns_np, rw_np, dn_np = batch_env.step(actions.astype(np.int32))
                 dn_arr = np.asarray(dn_np); all_done = all_done | dn_arr
                 for i in range(n_envs):
-                    if all_done[i]: continue  # skip done envs to avoid pollution
-                    agent.memory.push(np.asarray(states_np)[i], int(actions[i]),
+                    # Push terminal transition ONCE, skip repeats
+                    if all_done[i] and pushed_done[i]: continue
+                    agent.memory.push(np.asarray(states_np)[i].copy(), int(actions[i]),
                                       float(np.asarray(rw_np)[i]),
-                                      np.asarray(ns_np)[i], bool(dn_arr[i]), env_id=i)
+                                      np.asarray(ns_np)[i].copy(), bool(dn_arr[i]), env_id=i)
+                    if all_done[i]: pushed_done[i] = True
                 beta = min(1.0, 0.4 + 0.6 * ep / max(1, episodes * 0.3))
                 loss = agent.optimize_model(beta=beta)
                 if loss > 0: ep_loss += loss; loss_n += 1
