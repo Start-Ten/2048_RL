@@ -21,18 +21,53 @@ echo   Episodes: %EPISODES%
 echo   Log: %LOG_FILE%
 echo.
 
-echo [1/4] Checking Python...
+echo [0/5] Detecting GPU...
+:: Check for NVIDIA GPU
+nvidia-smi -L >nul 2>&1
+if %errorlevel% equ 0 (
+    echo   NVIDIA GPU detected
+    for /f "tokens=*" %%g in ('nvidia-smi --query-gpu^=name --format^=csv,noheader 2^>nul') do echo   GPU: %%g
+    for /f "tokens=*" %%m in ('nvidia-smi --query-gpu^=memory.total --format^=csv,noheader 2^>nul') do echo   VRAM: %%m
+) else (
+    echo   No NVIDIA GPU found - CPU training only
+)
+
+echo.
+echo [1/5] Checking Python + PyTorch CUDA...
 python --version >nul 2>&1 || (echo ERROR: Python not found & exit /b 1)
 python --version
 
+:: Check if PyTorch has CUDA; if GPU exists but PyTorch is CPU-only, fix it
+nvidia-smi -L >nul 2>&1
+if %errorlevel% equ 0 (
+    python -c "import torch; assert torch.cuda.is_available(), 'CPU-only'" >nul 2>&1
+    if %errorlevel% neq 0 (
+        echo   NVIDIA GPU detected but PyTorch is CPU-only
+        echo   Installing PyTorch with CUDA support...
+        python -m pip install torch --index-url https://download.pytorch.org/whl/cu124 --force-reinstall --no-deps -q
+        if %errorlevel% equ 0 (
+            echo   CUDA PyTorch installed. Restarting...
+            :: Re-run this script
+            call "%~f0" %*
+            exit /b 0
+        ) else (
+            echo   WARNING: CUDA install failed, continuing with CPU
+        )
+    ) else (
+        echo   PyTorch CUDA: OK
+    )
+) else (
+    echo   PyTorch CPU mode
+)
+
 echo.
-echo [2/4] Installing dependencies...
-python -m pip install --quiet numpy torch tqdm matplotlib pybind11
-if %errorlevel% neq 0 (echo   WARNING: pip install had issues, continuing...)
+echo [2/5] Installing dependencies...
+python -m pip install --quiet numpy torch tqdm matplotlib pybind11 rich pynvml
+if %errorlevel% neq 0 (echo   WARNING: pip install had issues)
 echo   Done.
 
 echo.
-echo [3/4] Compiling C++ engine...
+echo [3/5] Compiling C++ engine...
 python setup.py build_ext --inplace
 if %errorlevel% equ 0 (
     echo   C++ engine compiled successfully
@@ -41,8 +76,13 @@ if %errorlevel% equ 0 (
 )
 
 echo.
-echo [4/4] Starting training...
-echo   Logging to: %LOG_FILE%
+echo [4/5] Running environment doctor...
+python doctor.py --fix
+echo   Done.
+
+echo.
+echo [5/5] Starting training with TUI...
+echo   Log: %LOG_FILE%
 echo   Press Ctrl+C to stop.
 echo.
 
