@@ -35,46 +35,8 @@ echo [1/5] Checking Python + PyTorch CUDA...
 python --version >nul 2>&1 || (echo ERROR: Python not found & exit /b 1)
 python --version
 
-:: Use a Python helper to do all GPU/PyTorch compatibility checks at once
-python -c "
-import subprocess, sys
-
-def check_gpu():
-    result = subprocess.run(['nvidia-smi', '-L'], capture_output=True, text=True)
-    return result.returncode == 0
-
-def check_cuda():
-    try:
-        import torch
-        if torch.cuda.is_available():
-            props = torch.cuda.get_device_properties(0)
-            ver = torch.__version__
-            cc = f'{props.major}{props.minor}'
-            return {'ok': True, 'cc': cc, 'pt_ver': ver, 'cuda_ver': torch.version.cuda or '0'}
-        return {'ok': False, 'reason': 'CPU-only PyTorch'}
-    except ImportError:
-        return {'ok': False, 'reason': 'PyTorch not installed'}
-
-has_gpu = check_gpu()
-if not has_gpu:
-    print('NO_GPU')
-    sys.exit(0)
-
-info = check_cuda()
-if not info['ok']:
-    print(f'NEED_CUDA:{info[\"reason\"]}')
-elif int(info['cc']) >= 120:
-    # Check if current PyTorch supports Blackwell (needs 2.7+ with CUDA 12.8+)
-    pt_ver = tuple(int(x) for x in info['pt_ver'].split('.')[:2])
-    cu_ver = float(info['cuda_ver'])
-    if pt_ver < (2, 7) or cu_ver < 12.8:
-        print(f'BLACKWELL:{info[\"cc\"]}:{info[\"pt_ver\"]}')
-    else:
-        print(f'OK:{info[\"cc\"]}')
-else:
-    print(f'OK:{info[\"cc\"]}')
-" > "%TEMP%\gpu_check.txt" 2>nul
-
+:: Use external Python helper for GPU/PyTorch compatibility checks
+python _gpu_check.py > "%TEMP%\gpu_check.txt" 2>nul
 set /p GPU_STATUS=<"%TEMP%\gpu_check.txt"
 del "%TEMP%\gpu_check.txt" 2>nul
 
