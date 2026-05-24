@@ -39,7 +39,7 @@ else:
 
 class DQNAgent:
     def __init__(self, input_channels=8, action_size=4, lr=3e-4, gamma=0.995,
-                 tau=0.005, batch_size=1024, grad_accum=2, n_envs=128):
+                 tau=0.005, batch_size=8192, grad_accum=2, n_envs=256):
         self.gamma = gamma; self.tau = tau
         self.batch_size = batch_size; self.grad_accum = grad_accum
         self.action_size = action_size
