@@ -67,7 +67,7 @@ def _plot_progress(scores, avg, tiles, losses, path="training_progress.png"):
         smoothed = np.convolve(scores, kernel, mode='valid')
         axes[1, 2].plot(smoothed, 'purple', linewidth=1)
         axes[1, 2].set_title(f'Score (rolling avg {n})'); axes[1, 2].grid(alpha=0.3)
-    fig.suptitle(f'2048 DQN V4 — Episode {len(scores):,}', fontsize=14, fontweight='bold')
+    fig.suptitle(f'2048 DQN V4 — {len(scores):,} episodes', fontsize=14, fontweight='bold')
     plt.tight_layout(); plt.savefig(path, dpi=100); plt.close()
 
 
