@@ -67,8 +67,8 @@ def _train_single(agent, scheduler, episodes, save_path, ckpt_path, resume):
 
     if resume and os.path.exists(ckpt_path):
         ck = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
-        scores = ck['scores']; max_tiles = ck['max_tiles']
-        avg_scores = ck['avg_scores']; losses = ck['losses']
+        scores = ck.get('scores', []); max_tiles = ck.get('max_tiles', [])
+        avg_scores = ck.get('avg_scores', []); losses = ck.get('losses', [])
         best_score = ck.get('best_score', 0); best_tile = ck.get('best_max_tile', 0)
         start_ep = ck.get('episode', 0); total_steps = ck.get('total_steps', 0)
         scheduler.load_state_dict(ck['scheduler_state'])
@@ -135,13 +135,19 @@ def _train_single(agent, scheduler, episodes, save_path, ckpt_path, resume):
             elif hasattr(pbar, 'set_description'):
                 pbar.set_description(f"Ep {ep+1} | Score: {sc} avg: {avg_sc:.0f} | Tile: {mt} | Loss: {avg_loss:.4f} | LR: {lr:.2e}")
 
-            # Save checkpoint every episode (for resume safety)
+            # Lightweight resume checkpoint (overwrite each episode)
             agent.save(save_path)
-            torch.save({'scores': scores, 'max_tiles': max_tiles, 'avg_scores': avg_scores,
-                        'losses': losses, 'best_score': best_score, 'best_max_tile': best_tile,
-                        'episode': ep + 1, 'total_steps': total_steps,
+            torch.save({'episode': ep + 1, 'total_steps': total_steps,
+                        'best_score': best_score, 'best_max_tile': best_tile,
                         'scheduler_state': scheduler.state_dict()}, ckpt_path)
+            # Full history + plot every 200 episodes
             if (ep + 1) % 200 == 0:
+                torch.save({'scores': scores, 'max_tiles': max_tiles,
+                            'avg_scores': avg_scores, 'losses': losses,
+                            'best_score': best_score, 'best_max_tile': best_tile,
+                            'episode': ep + 1, 'total_steps': total_steps,
+                            'scheduler_state': scheduler.state_dict()},
+                           os.path.join(os.path.dirname(save_path), 'history.pt'))
                 _plot_progress(scores, avg_scores, max_tiles, losses)
     finally:
         if live_ctx: live_ctx.__exit__(None, None, None)
@@ -158,8 +164,8 @@ def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, resum
 
     if resume and os.path.exists(ckpt_path):
         ck = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
-        scores = ck['scores']; max_tiles = ck['max_tiles']
-        avg_scores = ck['avg_scores']; losses = ck['losses']
+        scores = ck.get('scores', []); max_tiles = ck.get('max_tiles', [])
+        avg_scores = ck.get('avg_scores', []); losses = ck.get('losses', [])
         best_score = ck.get('best_score', 0); best_tile = ck.get('best_max_tile', 0)
         start_ep = ck.get('episode', 0); total_steps = ck.get('total_steps', 0)
         scheduler.load_state_dict(ck['scheduler_state'])
@@ -242,13 +248,19 @@ def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, resum
             elif hasattr(pbar, 'set_description'):
                 pbar.set_description(f"Ep {ep+1} | Score: {sc:.0f} avg: {avg_sc:.0f} | Tile: {mt} | Loss: {avg_loss:.4f} | LR: {lr:.2e}")
 
-            # Save checkpoint every episode (for resume safety)
+            # Lightweight resume checkpoint (overwrite each episode)
             agent.save(save_path)
-            torch.save({'scores': scores, 'max_tiles': max_tiles, 'avg_scores': avg_scores,
-                        'losses': losses, 'best_score': best_score, 'best_max_tile': best_tile,
-                        'episode': ep + 1, 'total_steps': total_steps,
+            torch.save({'episode': ep + 1, 'total_steps': total_steps,
+                        'best_score': best_score, 'best_max_tile': best_tile,
                         'scheduler_state': scheduler.state_dict()}, ckpt_path)
+            # Full history + plot every 200 episodes
             if (ep + 1) % 200 == 0:
+                torch.save({'scores': scores, 'max_tiles': max_tiles,
+                            'avg_scores': avg_scores, 'losses': losses,
+                            'best_score': best_score, 'best_max_tile': best_tile,
+                            'episode': ep + 1, 'total_steps': total_steps,
+                            'scheduler_state': scheduler.state_dict()},
+                           os.path.join(os.path.dirname(save_path), 'history.pt'))
                 _plot_progress(scores, avg_scores, max_tiles, losses)
     finally:
         if live_ctx: live_ctx.__exit__(None, None, None)
