@@ -31,14 +31,44 @@ except ImportError:
     TUI_OK = False
 
 
+def _log_episode(path, ep, score, avg_score, max_tile, loss, lr):
+    import csv as _csv
+    existed = os.path.exists(path)
+    with open(path, 'a', newline='') as f:
+        w = _csv.writer(f)
+        if not existed: w.writerow(['episode','score','avg_score','max_tile','loss','lr'])
+        w.writerow([ep, score, f'{avg_score:.0f}', max_tile, f'{loss:.6f}', f'{lr:.2e}'])
+
 def _plot_progress(scores, avg, tiles, losses, path="training_progress.png"):
-    if len(scores) < 100: return
-    plt.figure(figsize=(12, 8))
-    plt.subplot(2, 2, 1); plt.plot(scores, alpha=0.5); plt.plot(avg); plt.title('Scores')
-    plt.subplot(2, 2, 2); plt.plot(tiles, 'g-'); plt.title('Max Tile')
-    plt.subplot(2, 2, 3); plt.plot(losses, 'r-'); plt.title('Loss')
-    plt.subplot(2, 2, 4); plt.hist(scores[-500:], bins=20); plt.title('Score Dist')
-    plt.tight_layout(); plt.savefig(path); plt.close()
+    if len(scores) < 10: return
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    # Scores
+    axes[0, 0].plot(scores, alpha=0.3, color='blue', label='Score')
+    axes[0, 0].plot(avg, color='blue', linewidth=2, label='Avg 100')
+    axes[0, 0].set_title('Score per Episode'); axes[0, 0].legend(); axes[0, 0].grid(alpha=0.3)
+    # Max Tile
+    axes[0, 1].plot(tiles, 'g-', alpha=0.5, linewidth=1)
+    axes[0, 1].set_title('Max Tile'); axes[0, 1].grid(alpha=0.3)
+    # Loss
+    axes[0, 2].plot(losses, 'r-', alpha=0.5, linewidth=1)
+    axes[0, 2].set_title('Training Loss'); axes[0, 2].grid(alpha=0.3)
+    # Score histogram
+    axes[1, 0].hist(scores[-min(500, len(scores)):], bins=30, color='blue', alpha=0.7)
+    axes[1, 0].set_title(f'Score Dist (last {min(500, len(scores))})')
+    # Tile histogram
+    tile_vals = [t for t in tiles if t >= 16]
+    if tile_vals:
+        axes[1, 1].hist(tile_vals, bins=20, color='green', alpha=0.7)
+        axes[1, 1].set_title('Max Tile Distribution')
+    # Smoothed score
+    n = min(100, len(scores))
+    if n > 0:
+        kernel = np.ones(n)/n
+        smoothed = np.convolve(scores, kernel, mode='valid')
+        axes[1, 2].plot(smoothed, 'purple', linewidth=1)
+        axes[1, 2].set_title(f'Score (rolling avg {n})'); axes[1, 2].grid(alpha=0.3)
+    fig.suptitle(f'2048 DQN V4 — Episode {len(scores):,}', fontsize=14, fontweight='bold')
+    plt.tight_layout(); plt.savefig(path, dpi=100); plt.close()
 
 
 def train(agent, scheduler, episodes=200000, save_dir="models_v4",
@@ -47,18 +77,19 @@ def train(agent, scheduler, episodes=200000, save_dir="models_v4",
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, "dqn_2048.pth")
     ckpt_path = os.path.join(save_dir, "checkpoint.pth")
+    csv_path = os.path.join(save_dir, "training_log.csv")
 
     if use_batch and not CPP_OK:
         print("C++ engine not available, falling back to single-env mode")
         use_batch = False
 
     if use_batch:
-        return _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, resume)
+        return _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, csv_path, resume)
     else:
-        return _train_single(agent, scheduler, episodes, save_path, ckpt_path, resume)
+        return _train_single(agent, scheduler, episodes, save_path, ckpt_path, csv_path, resume)
 
 
-def _train_single(agent, scheduler, episodes, save_path, ckpt_path, resume):
+def _train_single(agent, scheduler, episodes, save_path, ckpt_path, csv_path, resume):
     env = Game2048(4)
     scores, max_tiles, avg_scores, losses = [], [], [], []
     best_score, best_tile = 0, 0
@@ -135,13 +166,14 @@ def _train_single(agent, scheduler, episodes, save_path, ckpt_path, resume):
             elif hasattr(pbar, 'set_description'):
                 pbar.set_description(f"Ep {ep+1} | Score: {sc} avg: {avg_sc:.0f} | Tile: {mt} | Loss: {avg_loss:.4f} | LR: {lr:.2e}")
 
-            # Lightweight resume checkpoint (overwrite each episode)
+            # Log + checkpoint
+            _log_episode(csv_path, ep + 1, sc, avg_sc, mt, avg_loss, lr)
             agent.save(save_path)
             torch.save({'episode': ep + 1, 'total_steps': total_steps,
                         'best_score': best_score, 'best_max_tile': best_tile,
                         'scheduler_state': scheduler.state_dict()}, ckpt_path)
             # Full history + plot every 200 episodes
-            if (ep + 1) % 200 == 0:
+            if (ep + 1) % 100 == 0:
                 torch.save({'scores': scores, 'max_tiles': max_tiles,
                             'avg_scores': avg_scores, 'losses': losses,
                             'best_score': best_score, 'best_max_tile': best_tile,
@@ -156,7 +188,7 @@ def _train_single(agent, scheduler, episodes, save_path, ckpt_path, resume):
     return scores, max_tiles, losses
 
 
-def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, resume):
+def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, csv_path, resume):
     batch_env = game2048_cpp.BatchGame2048(n_envs)
     scores, max_tiles, avg_scores, losses = [], [], [], []
     best_score, best_tile = 0, 0
@@ -248,13 +280,14 @@ def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, resum
             elif hasattr(pbar, 'set_description'):
                 pbar.set_description(f"Ep {ep+1} | Score: {sc:.0f} avg: {avg_sc:.0f} | Tile: {mt} | Loss: {avg_loss:.4f} | LR: {lr:.2e}")
 
-            # Lightweight resume checkpoint (overwrite each episode)
+            # Log + checkpoint
+            _log_episode(csv_path, ep + 1, sc, avg_sc, mt, avg_loss, lr)
             agent.save(save_path)
             torch.save({'episode': ep + 1, 'total_steps': total_steps,
                         'best_score': best_score, 'best_max_tile': best_tile,
                         'scheduler_state': scheduler.state_dict()}, ckpt_path)
             # Full history + plot every 200 episodes
-            if (ep + 1) % 200 == 0:
+            if (ep + 1) % 100 == 0:
                 torch.save({'scores': scores, 'max_tiles': max_tiles,
                             'avg_scores': avg_scores, 'losses': losses,
                             'best_score': best_score, 'best_max_tile': best_tile,
