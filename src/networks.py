@@ -74,30 +74,27 @@ class SEBlock(nn.Module):
 
 
 class DQN_V4(nn.Module):
-    """SE-ResNet + Dueling + NoisyNet (~190M params)."""
+    """SE-ResNet + Dueling + NoisyNet (~6.5M params — balanced for 2048)."""
 
     def __init__(self, input_channels=8, output_size=4):
         super().__init__()
         self.stem = nn.Sequential(
-            nn.Conv2d(input_channels, 256, 3, padding=1, bias=False),
-            nn.BatchNorm2d(256), nn.ReLU(inplace=True))
-        self.s1 = nn.Sequential(SEBlock(256, 256), SEBlock(256, 256), SEBlock(256, 256))
-        self.s2 = nn.Sequential(SEBlock(256, 512), SEBlock(512, 512), SEBlock(512, 512), SEBlock(512, 512))
-        self.s3 = nn.Sequential(SEBlock(512, 1024), SEBlock(1024, 1024), SEBlock(1024, 1024),
-                                SEBlock(1024, 1024), SEBlock(1024, 1024), SEBlock(1024, 1024))
-        self.s4 = nn.Sequential(SEBlock(1024, 1024), SEBlock(1024, 1024), SEBlock(1024, 1024))
-        self.val_conv = nn.Conv2d(1024, 64, 1)
+            nn.Conv2d(input_channels, 64, 3, padding=1, bias=False),
+            nn.BatchNorm2d(64), nn.ReLU(inplace=True))
+        self.s1 = nn.Sequential(SEBlock(64, 128), SEBlock(128, 128))
+        self.s2 = nn.Sequential(SEBlock(128, 256), SEBlock(256, 256), SEBlock(256, 256))
+        self.s3 = nn.Sequential(SEBlock(256, 256), SEBlock(256, 256))
+        self.val_conv = nn.Conv2d(256, 16, 1)
         self.val_fc = nn.Sequential(nn.ReLU(inplace=True), nn.Flatten(),
-                                     nn.Linear(1024, 1024), nn.ReLU(inplace=True))
-        self.val_noisy = FactorizedNoisyLinear(1024, 1)
-        self.adv_conv = nn.Conv2d(1024, 256, 1)
+                                     nn.Linear(256, 128), nn.ReLU(inplace=True))
+        self.val_noisy = FactorizedNoisyLinear(128, 1)
+        self.adv_conv = nn.Conv2d(256, 64, 1)
         self.adv_fc = nn.Sequential(nn.ReLU(inplace=True), nn.Flatten(),
-                                     nn.Linear(4096, 1024), nn.ReLU(inplace=True))
-        self.adv_noisy = FactorizedNoisyLinear(1024, output_size)
+                                     nn.Linear(1024, 128), nn.ReLU(inplace=True))
+        self.adv_noisy = FactorizedNoisyLinear(128, output_size)
 
     def forward(self, x):
-        x = self.stem(x); x = self.s1(x); x = self.s2(x)
-        x = self.s3(x); x = self.s4(x)
+        x = self.stem(x); x = self.s1(x); x = self.s2(x); x = self.s3(x)
         v = self.val_noisy(self.val_fc(self.val_conv(x)))
         a = self.adv_noisy(self.adv_fc(self.adv_conv(x)))
         return v + a - a.mean(dim=1, keepdim=True)
