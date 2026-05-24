@@ -92,7 +92,7 @@ class DQNAgent:
             with torch.no_grad():
                 na = self.policy_net(next_states).max(1)[1]
                 nq = self.target_net(next_states).gather(1, na.unsqueeze(1)).squeeze()
-                tgt = rewards + (1 - dones) * self.gamma * nq
+                tgt = rewards + (1 - dones) * (self.gamma ** self.memory.n_step) * nq
             loss = ((self.loss_fn(cur_q, tgt) * weights).mean()) / self.grad_accum
 
         if self.use_amp: self.scaler.scale(loss).backward()
