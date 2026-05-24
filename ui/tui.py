@@ -156,6 +156,7 @@ class TrainingMonitor:
         self._last_n = 0
 
         self.ep = 0; self.total = 0; self.total_episodes = 0
+        self.resumed = False; self.resume_ep = 0
         self.score = 0; self.avg_score = 0
         self.tile = 0; self.loss = 0.0; self.lr = 0.0
         self.steps = 0; self.best_score = 0; self.best_tile = 0
@@ -361,6 +362,9 @@ class TrainingMonitor:
         t.add_column()
 
         gpu = self.gpu.get_stats(0)
+        if self.resumed:
+            t.add_row(f"[green]Resumed[/]", f"from episode {self.resume_ep}")
+
         warn_count = 0
 
         if gpu:

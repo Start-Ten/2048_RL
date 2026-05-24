@@ -57,31 +57,17 @@ def cmd_train(args):
         agent.optimizer, warmup_steps=2000 * steps_per_ep,
         total_steps=total_steps, min_lr=1e-6)
 
-    # Resume
-    start_ep = 0
+    # Resume: trainer.py handles checkpoint loading internally
     ckpt_path = os.path.join(args.save_dir, "checkpoint.pth")
-    model_path = os.path.join(args.save_dir, "dqn_2048.pth")
     if args.resume:
-        if not os.path.exists(model_path):
-            print(f"[resume] Model not found: {model_path}")
-            print(f"[resume] Starting fresh training")
-        elif not os.path.exists(ckpt_path):
-            print(f"[resume] Checkpoint not found: {ckpt_path}")
-            print(f"[resume] Loading model weights only, starting from episode 0")
+        if os.path.exists(os.path.join(args.save_dir, "dqn_2048.pth")):
             try:
-                agent.load(model_path)
+                agent.load(os.path.join(args.save_dir, "dqn_2048.pth"))
                 print(f"[resume] Model weights loaded")
             except Exception as e:
-                print(f"[resume] Failed to load model: {e}")
+                print(f"[resume] Load failed: {e}")
         else:
-            try:
-                agent.load(model_path)
-                ck = torch.load(ckpt_path, map_location='cpu', weights_only=False)
-                start_ep = ck.get('episode', 0)
-                print(f"[resume] Model + checkpoint loaded, resuming from episode {start_ep}")
-            except Exception as e:
-                print(f"[resume] Failed: {e}, starting fresh")
-                start_ep = 0
+            print(f"[resume] No saved model found — starting fresh")
 
     print(f"Starting {'batch' if args.use_batch else 'single-env'} training "
           f"for {args.episodes} episodes...")

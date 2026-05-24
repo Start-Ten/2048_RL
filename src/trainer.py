@@ -96,13 +96,23 @@ def _train_single(agent, scheduler, episodes, save_path, ckpt_path, csv_path, re
     start_ep = 0
     total_steps = 0
 
+    resumed = False
     if resume and os.path.exists(ckpt_path):
         ck = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
-        scores = ck.get('scores', []); max_tiles = ck.get('max_tiles', [])
-        avg_scores = ck.get('avg_scores', []); losses = ck.get('losses', [])
+        hist_path = os.path.join(os.path.dirname(save_path), 'history.pt')
+        if os.path.exists(hist_path):
+            hist = torch.load(hist_path, map_location=DEVICE, weights_only=False)
+            scores = hist.get('scores', []); max_tiles = hist.get('max_tiles', [])
+            avg_scores = hist.get('avg_scores', []); losses = hist.get('losses', [])
+        else:
+            scores = ck.get('scores', []); max_tiles = ck.get('max_tiles', [])
+            avg_scores = ck.get('avg_scores', []); losses = ck.get('losses', [])
         best_score = ck.get('best_score', 0); best_tile = ck.get('best_max_tile', 0)
         start_ep = ck.get('episode', 0); total_steps = ck.get('total_steps', 0)
         scheduler.load_state_dict(ck['scheduler_state'])
+        resumed = True
+        print(f"[resume] Ep {start_ep}, best_score={best_score}, best_tile={best_tile}, "
+              f"history={len(scores)} episodes")
 
     # TUI / tqdm
     monitor = None; live_ctx = None
@@ -117,6 +127,8 @@ def _train_single(agent, scheduler, episodes, save_path, ckpt_path, csv_path, re
         if monitor:
             monitor.total_episodes = episodes
             monitor.best_score = best_score; monitor.best_tile = best_tile
+            if resumed: monitor.resumed = True; monitor.resume_ep = start_ep
+            if resumed: monitor.resumed = True; monitor.resume_ep = start_ep
             live_ctx = Live(monitor.render(), refresh_per_second=4); live_ctx.__enter__()
 
     pbar = range(start_ep, episodes)
@@ -194,13 +206,23 @@ def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, csv_p
     best_score, best_tile = 0, 0
     start_ep, total_steps = 0, 0
 
+    resumed = False
     if resume and os.path.exists(ckpt_path):
         ck = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
-        scores = ck.get('scores', []); max_tiles = ck.get('max_tiles', [])
-        avg_scores = ck.get('avg_scores', []); losses = ck.get('losses', [])
+        hist_path = os.path.join(os.path.dirname(save_path), 'history.pt')
+        if os.path.exists(hist_path):
+            hist = torch.load(hist_path, map_location=DEVICE, weights_only=False)
+            scores = hist.get('scores', []); max_tiles = hist.get('max_tiles', [])
+            avg_scores = hist.get('avg_scores', []); losses = hist.get('losses', [])
+        else:
+            scores = ck.get('scores', []); max_tiles = ck.get('max_tiles', [])
+            avg_scores = ck.get('avg_scores', []); losses = ck.get('losses', [])
         best_score = ck.get('best_score', 0); best_tile = ck.get('best_max_tile', 0)
         start_ep = ck.get('episode', 0); total_steps = ck.get('total_steps', 0)
         scheduler.load_state_dict(ck['scheduler_state'])
+        resumed = True
+        print(f"[resume] Ep {start_ep}, best_score={best_score}, best_tile={best_tile}, "
+              f"history={len(scores)} episodes")
 
     monitor = None; live_ctx = None
     if TUI_OK:
