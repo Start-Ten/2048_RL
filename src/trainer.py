@@ -135,12 +135,13 @@ def _train_single(agent, scheduler, episodes, save_path, ckpt_path, resume):
             elif hasattr(pbar, 'set_description'):
                 pbar.set_description(f"Ep {ep+1} | Score: {sc} avg: {avg_sc:.0f} | Tile: {mt} | Loss: {avg_loss:.4f} | LR: {lr:.2e}")
 
+            # Save checkpoint every episode (for resume safety)
+            agent.save(save_path)
+            torch.save({'scores': scores, 'max_tiles': max_tiles, 'avg_scores': avg_scores,
+                        'losses': losses, 'best_score': best_score, 'best_max_tile': best_tile,
+                        'episode': ep + 1, 'total_steps': total_steps,
+                        'scheduler_state': scheduler.state_dict()}, ckpt_path)
             if (ep + 1) % 200 == 0:
-                agent.save(save_path)
-                torch.save({'scores': scores, 'max_tiles': max_tiles, 'avg_scores': avg_scores,
-                            'losses': losses, 'best_score': best_score, 'best_max_tile': best_tile,
-                            'episode': ep + 1, 'total_steps': total_steps,
-                            'scheduler_state': scheduler.state_dict()}, ckpt_path)
                 _plot_progress(scores, avg_scores, max_tiles, losses)
     finally:
         if live_ctx: live_ctx.__exit__(None, None, None)
@@ -241,12 +242,13 @@ def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, resum
             elif hasattr(pbar, 'set_description'):
                 pbar.set_description(f"Ep {ep+1} | Score: {sc:.0f} avg: {avg_sc:.0f} | Tile: {mt} | Loss: {avg_loss:.4f} | LR: {lr:.2e}")
 
+            # Save checkpoint every episode (for resume safety)
+            agent.save(save_path)
+            torch.save({'scores': scores, 'max_tiles': max_tiles, 'avg_scores': avg_scores,
+                        'losses': losses, 'best_score': best_score, 'best_max_tile': best_tile,
+                        'episode': ep + 1, 'total_steps': total_steps,
+                        'scheduler_state': scheduler.state_dict()}, ckpt_path)
             if (ep + 1) % 200 == 0:
-                agent.save(save_path)
-                torch.save({'scores': scores, 'max_tiles': max_tiles, 'avg_scores': avg_scores,
-                            'losses': losses, 'best_score': best_score, 'best_max_tile': best_tile,
-                            'episode': ep + 1, 'total_steps': total_steps,
-                            'scheduler_state': scheduler.state_dict()}, ckpt_path)
                 _plot_progress(scores, avg_scores, max_tiles, losses)
     finally:
         if live_ctx: live_ctx.__exit__(None, None, None)
