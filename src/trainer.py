@@ -193,6 +193,13 @@ def _train_single(agent, scheduler, episodes, save_path, ckpt_path, csv_path, re
                             'scheduler_state': scheduler.state_dict()},
                            os.path.join(os.path.dirname(save_path), 'history.pt'))
                 _plot_progress(scores, avg_scores, max_tiles, losses)
+    except KeyboardInterrupt:
+        print(f"\nInterrupted, saving checkpoint at episode {ep + 1}...")
+        agent.save(save_path)
+        torch.save({'episode': ep + 1, 'total_steps': total_steps,
+                    'best_score': best_score, 'best_max_tile': best_tile,
+                    'scheduler_state': scheduler.state_dict()}, ckpt_path)
+        raise
     finally:
         if live_ctx: live_ctx.__exit__(None, None, None)
 
@@ -317,6 +324,13 @@ def _train_batch(agent, scheduler, n_envs, episodes, save_path, ckpt_path, csv_p
                             'scheduler_state': scheduler.state_dict()},
                            os.path.join(os.path.dirname(save_path), 'history.pt'))
                 _plot_progress(scores, avg_scores, max_tiles, losses)
+    except KeyboardInterrupt:
+        print(f"\nInterrupted, saving checkpoint at episode {ep + 1}...")
+        agent.save(save_path)
+        torch.save({'episode': ep + 1, 'total_steps': total_steps,
+                    'best_score': best_score, 'best_max_tile': best_tile,
+                    'scheduler_state': scheduler.state_dict()}, ckpt_path)
+        raise
     finally:
         if live_ctx: live_ctx.__exit__(None, None, None)
 
